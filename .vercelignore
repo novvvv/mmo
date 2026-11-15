@@ -1,0 +1,6 @@
+# Vercel에는 정적 클라이언트만 올린다. Dockerfile 이 업로드되면 컨테이너 프로젝트로 인식될 수 있다.
+Dockerfile
+.dockerignore
+server/
+tests/
+docs/

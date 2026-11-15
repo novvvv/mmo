@@ -1,0 +1,13 @@
+이 폴더의 음원은 모두 CC0(퍼블릭 도메인) 입니다. 게임용으로 길이와 음량을 다듬어 MP3로 변환했습니다.
+
+배경음악 (OpenGameArt.org)
+- bgm/village.mp3  Komiku, "Village, 2018"            https://opengameart.org/content/village-2018
+- bgm/casino.mp3   RandomMind, "Medieval: Market Day"  https://opengameart.org/content/medieval-market-day (카지노)
+- bgm/house.mp3    RandomMind, "Medieval: The Old Tower Inn"  https://opengameart.org/content/medieval-the-old-tower-inn
+- bgm/theater.mp3  RandomMind, "Medieval: The Bard's Tale"  https://opengameart.org/content/medieval-the-bards-tale
+
+효과음 (OpenGameArt.org)
+- 발소리(눈, 나무, 돌): "Different steps on wood, stone, leaves, gravel and mud"  https://opengameart.org/content/different-steps-on-wood-stone-leaves-gravel-and-mud
+- 타격, 아이템: "Rpg Sound Effect Pack"  https://opengameart.org/content/rpg-sound-effect-pack
+- 그 밖의 발소리, 이불, 앉기, 마시기, 먹기, 다트, 책장: Owlish Media "Sound Effects Pack"  https://opengameart.org/content/sound-effects-pack
+낚시, 동전, 빠칭코 소리는 core/audio.js 가 Web Audio로 직접 합성합니다.

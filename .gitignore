@@ -1,0 +1,18 @@
+# 비밀 값과 배포 설정
+.vercel
+.env*
+
+# 빌드 결과와 로컬 데이터 (계정 파일)
+server/build
+server/mmo_server
+server/data
+
+# 테스트
+node_modules/
+tests/.screenshots/
+
+# 공개하지 않는 파일: 계획 메모, 출처를 확인하지 않은 그림
+docs/TODO.md
+client/assets/poster_nimda.png
+
+.DS_Store

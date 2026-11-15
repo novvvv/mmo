@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mini MMO · 도트 데모</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/galmuri.css">
+  <style>
+    :root { --ink: #2b1b16; --wood: #4a2c1a; --wood-dark: #1f120b; --paper: #ecd9ae; --paper-dark: #cdb07c; --accent: #c8541c; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #1a120d; font-family: Galmuri11, 'Apple SD Gothic Neo', sans-serif; color: var(--ink); }
+    canvas { image-rendering: pixelated; }
+    #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+    [hidden] { display: none !important; }
+
+    .tag { position: absolute; transform: translate(-50%, -100%); padding: 1px 5px; background: rgba(31, 18, 11, .72); color: #fff3d0; font-size: 12px; white-space: nowrap; pointer-events: none; }
+    #hud { position: fixed; top: 12px; left: 12px; right: 12px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; pointer-events: none; }
+    .plate { padding: 6px 10px; background: var(--paper); border: 3px solid var(--wood-dark); box-shadow: inset 0 0 0 2px var(--paper-dark); font-size: 12px; line-height: 1.4; }
+    #hud a { pointer-events: auto; color: var(--ink); text-decoration: none; }
+    #hud a:hover { background: var(--paper-dark); }
+
+    #status { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+    #creator { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(420px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow-y: auto; padding: 14px; background: var(--paper); border: 4px solid var(--wood-dark); box-shadow: inset 0 0 0 3px var(--paper-dark), 0 10px 0 rgba(0, 0, 0, .35); }
+    #creator h1 { margin: 0 0 10px; font-size: 18px; font-weight: 700; text-align: center; }
+    #creator-body { display: flex; gap: 14px; align-items: flex-start; }
+    #preview { flex: none; width: 112px; height: 144px; background: #7d7a2a; border: 3px solid var(--wood-dark); }
+    #options { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
+    .option-row { display: flex; flex-direction: column; gap: 3px; }
+    .choices { display: flex; flex-wrap: wrap; gap: 4px; }
+    .choices button { min-width: 22px; height: 22px; padding: 0 5px; border: 2px solid var(--wood-dark); background: #f6e8c6; color: var(--ink); font: inherit; cursor: pointer; }
+    .choices button[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+    #name-field { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; }
+    #name { flex: 1; min-width: 0; padding: 5px 7px; border: 2px solid var(--wood-dark); background: #fff6df; color: var(--ink); font: inherit; }
+    #start { display: block; width: 100%; margin-top: 10px; padding: 8px; border: 3px solid var(--wood-dark); background: var(--accent); color: #fff3d0; font: inherit; font-size: 14px; cursor: pointer; }
+    #start:hover { background: #dd6a2c; }
+  </style>
+</head>
+<body>
+  <canvas id="view"></canvas>
+  <div id="tag" class="tag" hidden></div>
+  <div id="hud" hidden>
+    <div class="plate">도트 데모<br>WASD / 방향키로 이동</div>
+    <a class="plate" href="index.html">일반 모드로</a>
+  </div>
+  <div id="status" class="plate" role="status">맵을 그리는 중...</div>
+  <form id="creator" hidden>
+    <h1>캐릭터 만들기</h1>
+    <div id="creator-body">
+      <canvas id="preview" width="28" height="36" aria-label="캐릭터 미리보기"></canvas>
+      <div id="options"></div>
+    </div>
+    <label id="name-field">이름 <input id="name" maxlength="12" autocomplete="off" spellcheck="false" required></label>
+    <button id="start" type="submit">시작하기</button>
+  </form>
+  <script src="pixel.js"></script>
+</body>
+</html>

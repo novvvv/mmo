@@ -1,0 +1,6 @@
+{
+  "framework": null,
+  "installCommand": "",
+  "buildCommand": "if [ -z \"$MMO_WS_URL\" ]; then echo 'MMO_WS_URL is required, e.g. wss://your-game-server.example.com/ws' >&2; exit 1; fi; printf 'window.MMO_WS_URL = \"%s\";\\n' \"$MMO_WS_URL\" > client/config.js",
+  "outputDirectory": "client"
+}
