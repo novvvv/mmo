@@ -1,5 +1,5 @@
 // 함께 집중: 모임 만들기와 모집 알림(같은 곳·친구), 참가, 방장만 시작, 같은 타이머, 도중 참가, 끊겼다 돌아오기,
-// 끝났을 때의 알림과 기록, 일찍 끝내기, 방장 넘기기, 모임이 사라지는 때.
+// 끝났을 때의 알림과 기록, 일찍 끝내기, 방장 넘기기, 방장이 나가면 해체, 모임이 사라지는 때.
 // 화면: 오른쪽 위 「집중」 버튼과 창, 모집 알림창, 남은 시간(창·화면 위 표시·탭 제목), 머리 위 표시, 끝 알림
 import path from 'node:path';
 import { Bot, enterGame, launchBrowser, serverWithAccounts, SHOTS, wait } from '../lib.mjs';
@@ -93,19 +93,30 @@ async function protocol(t) {
   a.send('focus stop');
   await d.until(() => count(d, 'focusdone') > before, 1000);
   t.check('the host can end it early', last(d, 'focusdone').cut === 1 && room(d).run === 0 && says(d, '방장만'));
-  a.send('focus leave');
+  // ---- 방장 넘기기
+  await wait(300);
+  a.send('focus host 1');
   await b.until(() => room(b).host === 1, 1000);
-  t.check('leaving hands the room to the next member', room(a).id === 0 && JSON.stringify(room(b).m) === '[["b",1],["d",1]]' && says(d, '이제 b님이 방장'), JSON.stringify(room(b)));
-  b.close();   // 모으는 중에 끊기면 모임에서 빠진다
-  await d.until(() => room(d).host === 1, 1500);
+  t.check('the host can pass the room to another member', room(a).host === 0 && JSON.stringify(room(b).m) === '[["b",1],["a",1],["d",1]]' && says(d, 'a님이 b님에게 방장을 넘겼어요'), JSON.stringify(room(b)));
+  await wait(300);
+  a.send('focus host 1');
+  await wait(200);
+  t.check('only the host can pass it on', room(b).host === 1 && room(a).host === 0);
   d.send('focus leave');
-  await d.until(() => room(d).id === 0, 1000);
+  await b.until(() => room(b).m.length === 2, 1000);
+  t.check('a member leaving keeps the room going', room(d).id === 0 && JSON.stringify(room(b).m) === '[["b",1],["a",1]]' && says(b, 'd님이 집중 모임에서 나갔어요'), JSON.stringify(room(b)));
+
+  // ---- 방장이 나가면 모임이 해체된다
+  await wait(300);
+  b.send('focus leave');
+  await a.until(() => room(a).id === 0, 1000);
+  t.check('when the host leaves, the room is disbanded', room(a).id === 0 && room(b).id === 0 && says(a, '해체'), JSON.stringify(room(a)));
   await wait(300);
   a.send('focus list');
   await a.until(() => last(a, 'focuslist'), 1000);
   t.check('an empty room disappears', last(a, 'focuslist').r.length === 0);
 
-  for (const bot of [a, c, d]) bot.close();
+  for (const bot of [a, b, c, d]) bot.close();
   await wait(100);
   await server.stop();
 }
@@ -154,6 +165,12 @@ async function screen(t) {
   await wait(700);
   t.check('afterwards the title and badge go back', (await bob.title()) === title && !(await bob.evaluate((who) => entities.get(who)?.focus, aliceId)) && (await bob.textContent('#focus-chip')).includes('모으는 중'), await bob.title());
   await alice.click('#notice-yes');
+  t.check('the host sees a button to pass the room on, and the leave button says it disbands', await alice.isVisible('#focus-members .focus-pass') && (await alice.textContent('#focus-leave')) === '모임 해체하기' && !(await bob.isVisible('#focus-members .focus-pass')));
+  await alice.click('#focus-members .focus-pass');
+  await bob.waitForFunction(() => focusRoom?.host === 1);
+  await bob.click('#focus-open');   // 아까 창을 닫아 두었다
+  await bob.waitForSelector('#focus-start:visible', { timeout: 2000 }).catch(() => {});
+  t.check('clicking it makes the other person host', await bob.isVisible('#focus-start') && !(await alice.isVisible('#focus-start')) && (await alice.textContent('#focus-leave')) === '모임 나가기');
   await alice.click('#focus-leave');
   await alice.waitForSelector('#focus-make:visible');
   await alice.waitForFunction(() => document.querySelectorAll('#focus-rooms .friend-row').length === 1, null, { timeout: 7000 });
@@ -161,6 +178,13 @@ async function screen(t) {
   await alice.click('#focus-rooms .rbtn');
   await alice.waitForFunction(() => document.querySelectorAll('#focus-members li').length === 2);
   t.check('and can be joined from the list', (await alice.textContent('#focus-members li')).includes('bob'));
+  await bob.click('#focus-leave');
+  await bob.waitForFunction(() => document.getElementById('notice-title').textContent === '모임 해체' && !document.getElementById('notice-layer').hidden, null, { timeout: 3000 });
+  await bob.screenshot({ path: path.join(SHOTS, 'focus_disband.png') });
+  await bob.click('#notice-yes');
+  await alice.waitForSelector('#focus-make:visible', { timeout: 3000 }).catch(() => {});
+  await bob.waitForSelector('#focus-make:visible', { timeout: 3000 }).catch(() => {});
+  t.check('the host confirms, and the room is gone for everyone', await alice.isVisible('#focus-make') && await bob.isVisible('#focus-make') && (await alice.textContent('#chat-log')).includes('해체'));
 
   await browser.close();
   await server.stop();

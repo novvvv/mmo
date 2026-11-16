@@ -12,13 +12,12 @@ const XMAS_DECOR = [
   { k: 'tree', z: 0, x: 935, y: 500 },
   { k: 'tree', z: 0, x: 330, y: 1185 },
   { k: 'snowman', z: 0, x: 320, y: 540 },
-  { k: 'snowman', z: 0, x: 1080, y: 560 },
-  { k: 'snowman', z: 0, x: 1250, y: 420 },
+  { k: 'snowman', z: 0, x: 1225, y: 645 },   // 헤연의 집을 피해 옮김
   { k: 'snowman', z: 0, x: 110, y: 560 },
   { k: 'snowman', z: 0, x: 900, y: 1290 },
   { k: 'snowman', z: 0, x: 150, y: 1300 },
   { k: 'gifts', z: 0, x: 905, y: 300 },
-  { k: 'gifts', z: 0, x: 1260, y: 300 },
+  { k: 'gifts', z: 0, x: 1365, y: 345 },
   { k: 'gifts', z: 0, x: 1290, y: 1330 },
   { k: 'gifts', z: 0, x: 120, y: 700 },
   { k: 'sleigh', z: 0, x: 210, y: 340 },
@@ -148,6 +147,13 @@ const XMAS_ROOFS = {
     snowAlong(x - 118, top - 12, x + 118, top - 12, 9);
     snowAlong(x - 74, top - 54, x + 74, top - 54, 7);
     bulbsAlong(x - 106, top + 12, x + 106, top + 12, now);
+  },
+  7(b, g, now) {  // 헤연 (기와집)
+    const { x } = b;
+    polygon([[x - 60, g - 146], [x + 60, g - 146], [x + 74, g - 122], [x - 74, g - 122]], SNOW);
+    snowAlong(x - 62, g - 157, x + 62, g - 157, 8);
+    snowAlong(x - 74, g - 122, x + 74, g - 122, 9);
+    bulbsAlong(x - 80, g - 92, x + 80, g - 92, now);  // 처마 밑. 간판을 가리지 않는다
   },
   cafe(b, g, now) {
     const { x } = b, top = g - 96;

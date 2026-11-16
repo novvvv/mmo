@@ -20,18 +20,19 @@ export default async function run(t) {
   const houses = map.buildings.filter((b) => b.k === 'house');
   const byName = Object.fromEntries(houses.map((h) => [h.name, h]));
 
-  t.check('three houses', houses.length === 3, houses.length);
+  t.check('four houses', houses.length === 4, houses.length);
   t.check('몰쟈 at (1105, 1309)', byName.몰쟈?.x === 1105 && byName.몰쟈?.y === 1309);
   t.check('랏라 at (449, 1316)', byName.랏라?.x === 449 && byName.랏라?.y === 1316);
   t.check('캬캬 at (676, 1391)', byName.캬캬?.x === 676 && byName.캬캬?.y === 1391);
-  t.check('every house looks different', new Set(houses.map((h) => h.style)).size === 3);
-  t.check('every house has its own room', new Set(houses.map((h) => h.room)).size === 3 && houses.every((h) => h.room > 0));
+  t.check('헤연 at (1150, 430)', byName.헤연?.x === 1150 && byName.헤연?.y === 430);
+  t.check('every house looks different', new Set(houses.map((h) => h.style)).size === houses.length);
+  t.check('every house has its own room', new Set(houses.map((h) => h.room)).size === houses.length && houses.every((h) => h.room > 0));
   t.check('houses do not overlap', houses.every((h, i) => houses.every((o, j) => i === j || Math.abs(h.x - o.x) > h.halfW + o.halfW || Math.abs(h.y - o.y) > h.back + o.front)));
 
   // 몰쟈와 캬캬의 가구는 처음 깔리는 설치형 가구(seeds)로 온다
   const roomKinds = houses.map((h) => new Set(map.furn.concat(map.seeds).filter((f) => f.z === h.room).map((f) => f.k)));
   const signature = roomKinds.map((set) => [...set].sort().join());
-  t.check('interiors are furnished differently', new Set(signature).size === 3, signature.join(' | '));
+  t.check('interiors are furnished differently', new Set(signature).size === houses.length, signature.join(' | '));
   t.check('every room has several pieces', roomKinds.every((set) => set.size >= 6));
   const seatKinds = new Set(map.catalog.filter((c) => c.seats > 0).map((c) => c.k));
   t.check('every room has a place to sit', houses.every((h) => map.seats.some((s) => s.z === h.room) || map.seeds.some((s) => s.z === h.room && seatKinds.has(s.k))));

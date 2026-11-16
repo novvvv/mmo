@@ -1,6 +1,6 @@
 // 집 꾸미기: 가구 사기, 놓기(집 안과 마당), 치우기, 옮기기, 돌리기, 크기, 염색, 저장.
 // 가구 목록과 값은 decor.hpp 에 있다.
-#include "core/rules.hpp"
+#include "game/rules.hpp"
 
 bool Game::isHouseZone(int zone) const {
     if (zone <= 0 || zone >= world_.zoneCount()) return false;
@@ -55,16 +55,23 @@ std::string Game::decorProblem(const Player& p, const decor::Kind& kind, float x
             if (y >= -kWallBandTop && y <= -kWallBandBottom && x >= 20.f && x <= zone.w - 20.f) return "";
             return "벽에만 걸 수 있습니다.";
         }
+        // 같은 높이의 바닥 윗변(여러 바닥에 걸쳐도 된다)에 서는 벽이 그림 양끝까지 이어지고, 그 벽이 다른 바닥에 가리지 않아야 한다
         const bool onWall = std::any_of(zone.floors.begin(), zone.floors.end(), [&](const FloorRect& f) {
-            return x >= f.x0 + 20.f && x <= f.x1 - 20.f && y >= f.y0 - kWallBandTop && y <= f.y0 - kWallBandBottom && !world_.wallCut(p.zone, f, x - 30.f, x + 30.f);
+            if (y < f.y0 - kWallBandTop || y > f.y0 - kWallBandBottom) return false;
+            for (const float sx : {x - 30.f, x, x + 30.f}) {
+                const bool held = std::any_of(zone.floors.begin(), zone.floors.end(), [&](const FloorRect& g) {
+                    return g.y0 == f.y0 && sx >= g.x0 + 2.f && sx <= g.x1 - 2.f && !world_.wallCut(p.zone, g, sx - 10.f, sx + 10.f);
+                });
+                if (!held) return false;
+            }
+            return true;
         });
         return onWall ? "" : "벽에만 걸 수 있습니다.";
     }
     if (kind.place == decor::kFlat && kind.halfW > 0.f) {
         if (x - kind.halfW < zone.minX || x + kind.halfW > zone.w || y - kind.depth < zone.minY || y + kind.depth > zone.h) return "깔개가 방 밖으로 나갑니다.";
         if (!zone.floors.empty()) {
-            const FloorRect* floor = world_.floorAt(p.zone, x, y);
-            if (!floor || x - kind.halfW < floor->x0 || x + kind.halfW > floor->x1 || y - kind.depth < floor->y0 || y + kind.depth > floor->y1) return "깔개가 방 밖으로 나갑니다.";
+            if (!world_.floorCovers(p.zone, x - kind.halfW, y - kind.depth, x + kind.halfW, y + kind.depth)) return "깔개가 방 밖으로 나갑니다.";
         }
         return "";
     }
@@ -84,7 +91,7 @@ std::string Game::decorProblem(const Player& p, const decor::Kind& kind, float x
 
 // 마당: 마을에서 집 문 가까이의 빈 땅. 텃밭과 마당 꾸미기만 놓는다. 밟고 지나가는 것들이라 길을 막지 않는다
 std::string Game::yardProblem(const Player& p, const decor::Kind& kind, float x, float y, bool moving) const {
-    if (world_.houseDoorNear(x, y, farm::kYardReach) < 0) return "집 근처 마당에만 놓을 수 있습니다. 집 문에서 조금 더 가까이 놓아 주세요.";
+    if (town_.houseDoorNear(x, y, farm::kYardReach) < 0) return "집 근처 마당에만 놓을 수 있습니다. 집 문에서 조금 더 가까이 놓아 주세요.";
     if (!moving && std::count_if(decor_.begin(), decor_.end(), [&p](const Decor& item) { return item.zone == 0 && item.owner == p.account; }) >= farm::kYardPerPlayer) {
         return "마당에는 한 사람이 " + std::to_string(farm::kYardPerPlayer) + "개까지 놓을 수 있습니다.";
     }
@@ -248,13 +255,15 @@ bool Game::returnToOwner(const std::string& owner, int kind, const std::string& 
     }
     Account* account = accounts_.find(owner);
     if (!account) return false;
+    AccountData data = AccountData::read(*account);
     if (!tint.empty()) {
-        if (parseDyed(account->dyed).size() >= kMaxDyed) return false;
-        account->dyed += (account->dyed.empty() ? "" : ",") + std::to_string(kind) + ":" + tint;
+        if (parseDyed(data.dyed).size() >= kMaxDyed) return false;
+        data.dyed += (data.dyed.empty() ? "" : ",") + std::to_string(kind) + ":" + tint;
     } else {
-        if (account->furn[kind] >= kMaxFurnStack) return false;
-        ++account->furn[kind];
+        if (data.furn[kind] >= kMaxFurnStack) return false;
+        ++data.furn[kind];
     }
+    data.write(*account);
     persist(*account);
     return true;
 }
@@ -395,7 +404,7 @@ void Game::scaleDecor(ConnId id, Player& p, long decorId, long percent) {
 }
 
 // "buy <번호>", "place <번호> <x> <y>", "take <배치 번호>", "buydye", "dye <번호> <염색 값>",
-// "redye <염색 가구 칸> <염색 값>", "placedyed <염색 가구 칸> <x> <y>"
+// "redye <염색 가구 칸> <염색 값>", "placedyed <염색 가구 칸> <x> <y>", "dyeplaced <배치 번호> <염색 값>"
 void Game::decorCommand(ConnId id, Player& p, const std::string& arg) {
     if (p.tradeWith || !spendAction(p)) return;
     std::istringstream in(arg);
@@ -430,6 +439,10 @@ void Game::decorCommand(ConnId id, Player& p, const std::string& arg) {
         std::string tint;
         in >> tint;
         dyeFurniture(id, p, number, tint, action == "redye");
+    } else if (action == "dyeplaced") {
+        std::string tint;
+        in >> tint;
+        dyePlaced(id, p, number, tint);
     }
 }
 
@@ -470,6 +483,28 @@ void Game::dyeFurniture(ConnId id, Player& p, long number, const std::string& ti
     --p.dye;
     p.dirty = true;
     sendInventory(id, p);
+}
+
+// 염료 한 병을 써서 이미 놓인 가구를 그 자리에서 염색한다. 옮기기와 같은 사람(내 것, 집 가구, 동거인의 것)이 할 수 있다.
+void Game::dyePlaced(ConnId id, Player& p, long decorId, const std::string& tint) {
+    if (!validTint(tint)) return;
+    const auto found = std::find_if(decor_.begin(), decor_.end(), [&](const Decor& item) { return item.id == decorId && item.zone == p.zone; });
+    if (found == decor_.end()) return;
+    if (!canManage(p, *found)) {
+        server_.send(id, systemMessage("직접 놓았거나 동거인이 놓은 가구만 염색할 수 있습니다."));
+        return;
+    }
+    if (p.dye <= 0) {
+        server_.send(id, systemMessage("염료가 없습니다. 상점에서 받아 오세요."));
+        return;
+    }
+    if (found->tint == tint) return;
+    --p.dye;
+    p.dirty = true;
+    found->tint = tint;
+    sendInventory(id, p);
+    saveDecor();
+    broadcastDecor(p.zone);
 }
 
 // 받는 사람마다 자기 가구에 표시를 해서 보낸다.
@@ -566,7 +601,7 @@ void Game::seedDecor() {
         }
     }
     std::vector<std::string> added;
-    for (const DecorSeed& seed : world_.decorSeeds()) {
+    for (const DecorSeed& seed : town_.decorSeeds()) {
         const std::string key = std::to_string(seed.zone) + ":" + std::to_string(seed.gen);
         if (std::find(seeded.begin(), seeded.end(), key) != seeded.end()) continue;
         const auto kind = std::find_if(std::begin(decor::kCatalog), std::end(decor::kCatalog), [&seed](const decor::Kind& k) { return seed.kind == k.kind; });

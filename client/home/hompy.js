@@ -4,7 +4,7 @@
 // ------------------------------------------------------------ 미니홈피
 
 const hompyTabs = document.getElementById('hompy-tabs');
-const HOMPY_ORDER = ['캬캬', '랏라', '몰쟈'];  // 테스트 기간에는 이 세 집으로 고정
+const HOMPY_ORDER = ['캬캬', '랏라', '몰쟈', '헤연'];  // 테스트 기간에는 이 네 집으로 고정
 
 function hompyHouses() {
   if (!terrain) return [];

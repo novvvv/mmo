@@ -1,11 +1,13 @@
-// 붙인 방의 크기 바꾸기(가로·세로, 범위, 가구가 걸치면 그대로, 다시 켜도 남는다)와
-// 가구 돌리기(깔개·텃밭·침대는 90도씩, 그 밖의 가구는 좌우 뒤집기, 돌릴 자리가 없으면 그대로).
-// 화면: 상점의 넓히기 탭에서 막대로 크기 바꾸기, 돌린 침대에 눕기
+// 가구 돌리기(깔개·텃밭·침대·벽은 90도씩, 그 밖의 가구는 좌우 뒤집기, 돌릴 자리가 없으면 그대로).
+// 랏라의 집 오른쪽에 칸을 칠해 넓힌 방(x 680~1380, 원래 방과는 y 200~320 의 통로로 이어짐)에서 돌린다.
+// 화면: 돌린 침대에 눕기, 벽 가구를 돌리면 세로 벽으로 그려진다
 import path from 'node:path';
 import { Bot, enterGame, launchBrowser, serverWithAccounts, SHOTS, startServer, wait } from '../lib.mjs';
 
-const RARA = 2, RIGHT = 3, UP = 0;
-const CHAIR = 0, BED = 13, PLOT = 62;
+const RARA = 2;
+const CHAIR = 0, BED = 13, PLOT = 62, WALL = 72;
+// 통로(620~680 × 200~320)와 오른쪽 방(680~1380 × -220~680)을 칠하는 명령
+const PAINT = ['expand add 31 10 33 15', 'expand add 34 -11 68 33'];
 const says = (bot, text) => bot.events.some((e) => e.t === 'sys' && e.m.includes(text));
 const room = (bot) => bot.events.filter((e) => e.t === 'room' && e.z === RARA).at(-1)?.zone;
 const decor = (bot) => bot.events.filter((e) => e.t === 'decor').at(-1)?.p || [];
@@ -16,49 +18,22 @@ async function protocol(t) {
   const { server, ids } = await serverWithAccounts({ a: [RARA, 200, 300, { f0: 2, f13: 1, f62: 1 }] });
   let a = await Bot.enter(server, 'a', { id: ids.a });
   await wait(60);
-  t.check('the map says how far a room can be resized', JSON.stringify(a.map.zones[RARA].osize) === '[200,900,200,700]');
-
-  // ---- 방 크기
-  a.send(`expand open ${RIGHT}`);
-  await a.until(() => room(a)?.open.length === 1, 1500);
-  const first = room(a).open[0];
-  t.check('a new room starts at the usual size', first[3] === 440 && first[4] === 360, JSON.stringify(first));
-  await pause();
-  a.send(`expand size ${RIGHT} 300 500`);
-  await a.until(() => room(a).open[0][4] === 500, 1500);
-  const sized = room(a), added = sized.floors.at(-1);
-  t.check('its length and depth change as asked', sized.open[0][3] === 300 && added[2] - added[0] === 500 && added[3] - added[1] === 300 && sized.w === 620 + 60 + 500, JSON.stringify(sized.floors));
-  await pause();
-  a.send(`expand size ${RIGHT} 50 5000`);
-  await a.until(() => room(a).open[0][4] === 700, 1500);
-  t.check('sizes are held to the limits', room(a).open[0][3] === 200 && room(a).open[0][4] === 700, JSON.stringify(room(a).open));
-  await pause();
-  a.send(`expand size ${RIGHT} 900 700`);
-  await a.until(() => room(a).open[0][3] === 900, 1500);
-  const big = room(a).floors.at(-1);
-  t.check('a room longer than the wall centres on the house', big[1] === (460 - 900) / 2 && big[3] === (460 + 900) / 2, JSON.stringify(big));
+  for (const command of PAINT) {
+    a.send(command);
+    await pause();
+  }
+  await a.until(() => room(a)?.cells === 6 * 3 + 35 * 45, 1500);
+  t.check('the test room is painted', room(a)?.cells === 6 * 3 + 35 * 45, JSON.stringify(room(a)));
   await pause();
   a.send(`decor place ${CHAIR} 1300 600`);
   await a.until(() => item(a, CHAIR), 1500);
-  await pause();
-  a.send(`expand size ${RIGHT} 400 400`);
-  await a.until(() => says(a, '걸치는 가구'), 1500);
-  t.check('furniture in the part being cut keeps the room as it is', says(a, '걸치는 가구') && room(a).open[0][3] === 900);
-  await pause();
-  a.send(`expand open ${UP} 120`);
-  await a.until(() => room(a).open.length === 2, 1500);
-  await pause();
-  a.send(`expand size ${UP} 900 700`);
-  await a.until(() => says(a, '겹칩니다'), 1500);
-  t.check('a room cannot grow into another added room', says(a, '겹칩니다') && room(a).open.find((o) => o[0] === UP)[3] === 560, JSON.stringify(room(a).open));
 
   await wait(300);
   await server.stop();
   const again = await startServer({ dataDir: server.dataDir });
   a = await Bot.enter(again, 'a', { id: ids.a });
   await wait(100);
-  const kept = a.map.zones[RARA].open.find((o) => o[0] === RIGHT);
-  t.check('room sizes survive a restart', kept?.[3] === 900 && kept[4] === 700, JSON.stringify(a.map.zones[RARA].open));
+  t.check('the painted room survives a restart', a.map.zones[RARA].cells === 6 * 3 + 35 * 45 && item(a, CHAIR), JSON.stringify(a.map.zones[RARA]));
 
   // ---- 가구 돌리기
   const turnOf = (kind) => item(a, kind)?.[7];
@@ -98,24 +73,24 @@ async function protocol(t) {
 }
 
 async function screen(t) {
-  const { server, ids } = await serverWithAccounts({ g: [RARA, 200, 300, { f13: 1 }] });
+  const { server, ids } = await serverWithAccounts({ g: [RARA, 200, 300, { f13: 1, f72: 1 }] });
   const browser = await launchBrowser();
   const page = await enterGame(browser, server, ids.g, { name: 'g', viewport: { width: 1200, height: 800 } });
   await page.waitForFunction(() => zone === 2, null, { timeout: 4000 });
-  await page.evaluate(() => { ws.send('expand open 3'); });
-  await page.waitForFunction(() => terrain.zones[2].open.length === 1, null, { timeout: 3000 });
-  await page.click('#shop-open');
-  await page.click('#shop-tabs [data-tab="expand"]');
-  await page.waitForSelector('.expand-size-row', { timeout: 3000 });
-  const labels = await page.$$eval('.expand-size-row label', (els) => els.map((e) => e.textContent));
-  t.check('the expansion tab has length and depth sliders for the added room', labels.length === 2 && labels[0].includes('세로') && labels[0].includes('440px') && labels[1].includes('가로') && labels[1].includes('360px') && await page.isDisabled('.expand-size-row .rbtn'), JSON.stringify(labels));
-  await page.$eval('.expand-size-row input[data-field="deep"]', (el) => { el.value = 520; el.dispatchEvent(new Event('input', { bubbles: true })); });
-  t.check('moving a slider arms the button', !(await page.isDisabled('.expand-size-row .rbtn')) && (await page.textContent('.expand-size-row .rbtn')) === '이 크기로');
-  await page.click('.expand-size-row .rbtn');
-  await page.waitForFunction(() => terrain.zones[2].open[0][4] === 520, null, { timeout: 3000 });
-  t.check('and applying resizes the room', await page.evaluate(() => terrain.zones[2].w === 620 + 60 + 520) && (await page.textContent('.expand-size-row .rbtn')) === '지금 크기');
-  await page.screenshot({ path: path.join(SHOTS, 'expand_size.png') });
-  await page.evaluate(() => setFurnShop(false));
+  for (const command of PAINT) {
+    await page.evaluate((c) => ws.send(c), command);
+    await wait(280);
+  }
+  await page.waitForFunction(() => terrain.zones[2].cells > 1000, null, { timeout: 3000 });
+
+  // 벽 가구: 돌리면 세로 벽(폭 20, 길이 200)이 되고, 그림 범위도 세로로 길어진다
+  await page.evaluate((w) => ws.send(`decor place ${w} 1000 100`), WALL);
+  await page.waitForFunction(() => decorItems.some((d) => d.info.k === 'room_wall_long'), null, { timeout: 3000 });
+  await wait(300);
+  await page.evaluate(() => ws.send(`decor turn ${decorItems.find((d) => d.info.k === 'room_wall_long').id}`));
+  await page.waitForFunction(() => decorItems.find((d) => d.info.k === 'room_wall_long')?.rot === 1, null, { timeout: 3000 });
+  const wall = await page.evaluate(() => { const d = decorItems.find((x) => x.info.k === 'room_wall_long'); return { hw: d.info.hw, d: d.info.d, bounds: itemBounds(d) }; });
+  t.check('a turned wall stands lengthwise', wall.hw === 10 && wall.d === 200 && wall.bounds.w === 20 && wall.bounds.h === 200 + 124, JSON.stringify(wall));
 
   await page.evaluate(() => ws.send('decor place 13 900 300'));
   await page.waitForFunction(() => decorItems.some((d) => d.info.k === 'bed'), null, { timeout: 3000 });
@@ -132,7 +107,7 @@ async function screen(t) {
     return { lie: !!seat.lie, fx: seat.fx, fy: seat.fy };
   });
   t.check('the place on a turned bed lies sideways', lying.lie && lying.fx === -1 && lying.fy === 0, JSON.stringify(lying));
-  t.check('no script errors while resizing and turning', page.problems.length === 0, page.problems.join(' | '));
+  t.check('no script errors while turning', page.problems.length === 0, page.problems.join(' | '));
   await browser.close();
   await server.stop();
 }

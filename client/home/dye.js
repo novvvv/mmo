@@ -136,6 +136,17 @@ function openDye(kind, dyed) {
   renderDyePanel();
 }
 
+// 방에 놓인 가구를 그 자리에서 염색한다
+function openPlacedDye(item) {
+  dyeTarget = { kind: item.kind, dyed: -1, placed: item.id };
+  const old = parseTint(item.tint);
+  if (old) [old.r, old.g, old.b, old.light, old.sat].forEach((v, i) => { dyeInputs[i].value = v; });
+  dyeName.textContent = `${DECOR_NAMES[terrain.catalog[item.kind].k] || terrain.catalog[item.kind].k} (놓인 가구)`;
+  setDyeOpen(true);
+  restoreWindow(dyeEl, 'dye');
+  renderDyePanel();
+}
+
 function renderDyePanel() {
   if (dyeEl.hidden || !dyeTarget || !terrain) return;
   for (const input of dyeInputs) input.nextElementSibling.textContent = input.value;
@@ -178,6 +189,7 @@ dyeApply.addEventListener('click', () => {
   if (!dyeTarget || myDye <= 0) return;
   const tint = currentTint();
   if (dyeTarget.floor) ws.send(`floor dye ${tint}`);
+  else if (dyeTarget.placed !== undefined) ws.send(`decor dyeplaced ${dyeTarget.placed} ${tint}`);
   else if (dyeTarget.dyed >= 0) ws.send(`decor redye ${dyeTarget.dyed} ${tint}`);
   else ws.send(`decor dye ${dyeTarget.kind} ${tint}`);
   Sound.play('place');

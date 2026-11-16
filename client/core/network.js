@@ -520,6 +520,7 @@ function receiveState(msg) {
     e.seat = p.s || 0;
     e.fish = p.f || 0;
     e.pet = p.pt ?? -1;
+    e.petName = p.pn || '';   // 데리고 다니는 펫에게 지어 준 이름
     e.focus = !!p.fc;
     e.bx = p.bx;
     e.by = p.by;

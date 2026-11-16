@@ -1,6 +1,6 @@
 // 농장: 함께 쓰는 밭, 씨앗 가게, 출하 상자, 닭장과 젖소, 곳간(농장의 물건).
 // 작물, 물건 번호, 요리법은 farm.hpp 에 있다.
-#include "core/rules.hpp"
+#include "game/rules.hpp"
 
 void Game::loadFarm() {
     farm_.assign(static_cast<size_t>(farm::kPlots), FarmPlot{});
@@ -49,7 +49,7 @@ void Game::sendFarm(ConnId id, const Player& p) {
 
 void Game::broadcastFarm() {
     for (const auto& entry : players_) {
-        if (entry.second.zone == world_.farmZone()) sendFarm(entry.first, entry.second);
+        if (entry.second.zone == town_.farmZone()) sendFarm(entry.first, entry.second);
     }
 }
 
@@ -89,7 +89,7 @@ void Game::farmCommand(ConnId id, Player& p, const std::string& arg) {
         sendToZone(p.zone, "{\"t\":\"emote\",\"id\":" + std::to_string(id) + ",\"n\":\"" + text::jsonEscape(p.name) + "\",\"e\":1}");
         return;
     }
-    if (p.zone != world_.farmZone()) {
+    if (p.zone != town_.farmZone()) {
         say("농장에서만 할 수 있어요.");
         return;
     }
@@ -143,7 +143,7 @@ void Game::farmCommand(ConnId id, Player& p, const std::string& arg) {
     // 여기부터는 밭 한 칸에 하는 일
     if (a < 0 || a >= farm::kPlots) return;
     FarmPlot& plot = farm_[static_cast<size_t>(a)];
-    const Spot& spot = world_.farmPlots()[static_cast<size_t>(a)];
+    const Spot& spot = town_.farmPlots()[static_cast<size_t>(a)];
     if (std::hypot(spot.x - p.x, spot.y - p.y) > farm::kPlotReach) {
         say("밭에 더 가까이 가 주세요.");
         return;

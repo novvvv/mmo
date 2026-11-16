@@ -2,5 +2,6 @@
 Dockerfile
 .dockerignore
 server/
+server-core/
 tests/
 docs/

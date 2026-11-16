@@ -20,7 +20,7 @@ function stopMoving() {
 function handleKey(e) {
   if (myId === null) return;
   const field = document.activeElement;
-  if (field === chatInput || field === boardInput || field === tvUrl || field === tradeGold || field === jazzUrl || field === cinemaInput || field === todoInput || field === friendsName || field === guestText || field?.classList?.contains('todo-edit')) {  // 글자를 입력하는 중에는 WASD 가 글자로 입력되어야 한다
+  if (field === chatInput || field === boardInput || field === tvUrl || field === tradeGold || field === jazzUrl || field === cinemaInput || field === todoInput || field === friendsName || field === guestText || field === petNameInput || field?.classList?.contains('todo-edit')) {  // 글자를 입력하는 중에는 WASD 가 글자로 입력되어야 한다
     if (e.key === 'Escape') {
       if (field === boardInput) boardInput.value = sentBoard.text;  // 고치던 문구를 버린다
       field.blur();
@@ -83,7 +83,8 @@ function handleKey(e) {
     renderDecorPanel();
     return;
   }
-  if (e.key === 'Escape' && (decorPlacing >= 0 || decorTaking || decorMoving || decorTurning || decorSizing)) {
+  if (e.key === 'Escape' && (decorPlacing >= 0 || decorTaking || decorMoving || decorTurning || decorSizing || decorPainting)) {
+    setDecorPainting(false);
     setDecorPlacing(-1);
     setDecorTaking(false);
     setDecorMoving(false);

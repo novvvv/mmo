@@ -2,7 +2,7 @@
 import { Bot, startServer, wait } from '../lib.mjs';
 
 export default async function run(t) {
-  const server = await startServer();
+  const server = await startServer({ env: { MMO_CAT_NAP: '0' } });   // 돌아다니는 것을 보는 시험이라 낮잠은 끈다 (밤에는 60% 가 잠든다)
   const b1 = await Bot.enter(server, '관찰1');
   const b2 = await Bot.enter(server, '관찰2');
   const map = b1.map;

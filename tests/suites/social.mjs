@@ -169,7 +169,7 @@ async function guestbook(t) {
   host.send(`guest look ${RARA}`);
   await host.until(() => book(host, RARA), 1500);
   t.check('a house guestbook starts empty', book(host, RARA).n === 0 && book(host, RARA).e.length === 0);
-  t.check('everyone is told the newest entry of every house', last(away, 'guestlast')?.p.length === 3 && last(away, 'guestlast').p.every(([, id]) => id === 0));
+  t.check('everyone is told the newest entry of every house', last(away, 'guestlast')?.p.length === 4 && last(away, 'guestlast').p.every(([, id]) => id === 0));
   away.send(`guest write ${RARA}   다녀갑니다~ 집이 예뻐요`);
   await away.until(() => book(away, RARA)?.n === 1, 1500);
   const entry = book(away, RARA).e[0];
@@ -378,7 +378,7 @@ async function screens(t) {
   await alice.keyboard.press('KeyG');
   await alice.waitForSelector('#guest:not([hidden])', { timeout: 2000 });
   await alice.waitForFunction(() => guestBook, null, { timeout: 2000 });
-  t.check('G opens this house\'s guestbook', (await alice.textContent('#guest-title')).includes('랏라의 집 방명록') && (await alice.$$('#guest-tabs .rtab')).length === 3);
+  t.check('G opens this house\'s guestbook', (await alice.textContent('#guest-title')).includes('랏라의 집 방명록') && (await alice.$$('#guest-tabs .rtab')).length === 4);
   const before = await alice.evaluate(() => me.x);
   await alice.click('#guest-text');
   await alice.keyboard.type('놀러 왔다 갑니다 :)');

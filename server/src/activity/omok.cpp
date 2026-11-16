@@ -1,5 +1,5 @@
 // 오목 (오목판을 놓은 방): 두 사람이 앉아 두고, 같은 방 사람은 관전한다.
-#include "core/rules.hpp"
+#include "game/rules.hpp"
 
 std::string Game::omokJson(int zone) const {
     static const OmokGame empty;

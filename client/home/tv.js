@@ -479,7 +479,8 @@ function syncTv() {
     tvClock.textContent = `${formatTvTime(expected)} / ${formatTvTime(duration)}`;
   }
 }
-setInterval(syncTv, TV_SYNC_MS);
+// 스크립트가 모두 실행된 뒤에 시작한다 (먼저 시작하면 아직 불러오지 않은 파일의 값을 쓰다 멈출 수 있다)
+document.addEventListener('DOMContentLoaded', () => setInterval(syncTv, TV_SYNC_MS));
 
 function updateTvPanel() {
   const reel = !!tvState && tvState.reel;

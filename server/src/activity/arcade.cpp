@@ -1,5 +1,5 @@
 // 오락기: 슈팅·벽돌깨기(화면이 돌리고 점수만 받는다), 지뢰찾기(서버가 판을 갖는다), 체스(규칙과 컴퓨터는 chess.hpp).
-#include "core/rules.hpp"
+#include "game/rules.hpp"
 
 int Game::arcadeHost(const ArcadeGame& g) const {
     return g.players[0] ? 0 : 1;   // 판을 돌리는 화면: 1P, 1P 가 없으면 혼자 앉은 2P

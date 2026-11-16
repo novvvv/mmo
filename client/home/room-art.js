@@ -618,12 +618,15 @@ function exposedTop(floor, floors) {
   return spans;
 }
 
-// 복도로 이어진 집: 바닥마다 자기 무늬를 그리고, 복도가 뚫린 곳을 빼고 벽을 세운다.
+// 여러 바닥으로 된 집(복도로 이어진 방, 넓힌 집): 원래 방은 바닥마다 자기 무늬를, 칠해 넓힌 칸들은 한 번에 이어진 무늬를 그린다.
+// 뒷벽은 위가 다른 바닥과 맞닿지 않은 곳에만 서고, 벽 높이 안에 다른 바닥이 있으면 그 바닥을 덮지 않게 잘린다.
 function drawCarvedRooms(room) {
-  const floors = room.floors.map(([x0, y0, x1, y1, style]) => ({ x0, y0, x1, y1, style: ROOM_STYLES[style] }));
+  const isBase = (f) => room.base?.some((b) => b[0] === f[0] && b[1] === f[1] && b[2] === f[2] && b[3] === f[3]) ?? true;
+  const floors = room.floors.map((r) => ({ x0: r[0], y0: r[1], x1: r[2], y1: r[3], style: ROOM_STYLES[r[4]], base: isBase(r) }));
   const wasSingle = room.base?.length === 1;
   for (const f of floors) box(f.x0 - SIDE_WALL, f.y0 - WALL_HEIGHT, f.x1 - f.x0 + SIDE_WALL * 2, f.y1 - f.y0 + WALL_HEIGHT + SIDE_WALL, f.style.side);
   for (const f of floors) {
+    if (!f.base) continue;
     ctx.save();
     ctx.translate(f.x0, f.y0);
     ctx.beginPath();
@@ -632,8 +635,34 @@ function drawCarvedRooms(room) {
     paintRoomFloor(f.style, { w: f.x1 - f.x0, h: f.y1 - f.y0 });
     ctx.restore();
   }
+  const added = floors.filter((f) => !f.base);
+  for (const style of new Set(added.map((f) => f.style))) {
+    const group = added.filter((f) => f.style === style);
+    const gx0 = Math.min(...group.map((f) => f.x0)), gy0 = Math.min(...group.map((f) => f.y0));
+    const gx1 = Math.max(...group.map((f) => f.x1)), gy1 = Math.max(...group.map((f) => f.y1));
+    ctx.save();
+    ctx.beginPath();
+    for (const f of group) ctx.rect(f.x0, f.y0, f.x1 - f.x0, f.y1 - f.y0);
+    ctx.clip();
+    ctx.translate(gx0, gy0);
+    paintRoomFloor(style, { w: gx1 - gx0, h: gy1 - gy0 });
+    ctx.restore();
+  }
+  // 한 방이던 집의 뒷벽 윗선은 옆벽 두께만큼 양옆으로 내민다. 그 옆에 다른 바닥(이나 그 바닥의 뒷벽)이 있으면 내밀지 않는다
+  const reachesOut = (f, x0, x1) => !floors.some((o) => o !== f && o.x0 < x1 && o.x1 > x0 && o.y0 - WALL_HEIGHT - 8 < f.y0 && o.y1 > f.y0 - WALL_HEIGHT - 8);
   for (const f of floors) {
     for (const [a, b] of exposedTop(f, floors)) {
+      const left = wasSingle && a === f.x0 && reachesOut(f, a - SIDE_WALL, a) ? SIDE_WALL : 0;
+      const right = wasSingle && b === f.x1 && reachesOut(f, b, b + SIDE_WALL) ? SIDE_WALL : 0;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(a - left, f.y0 - WALL_HEIGHT - 8, b - a + left + right, WALL_HEIGHT + 8);
+      ctx.clip();
+      // 다른 바닥은 빼고 그린다 (짝수 번 겹친 곳은 칠하지 않는 규칙으로 구멍을 낸다)
+      ctx.beginPath();
+      ctx.rect(a - SIDE_WALL, f.y0 - WALL_HEIGHT - 8, b - a + SIDE_WALL * 2, WALL_HEIGHT + 8);
+      for (const o of floors) if (o !== f && o.y1 > f.y0 - WALL_HEIGHT - 8 && o.y0 < f.y0 && o.x0 < b && o.x1 > a) ctx.rect(o.x0, o.y0, o.x1 - o.x0, o.y1 - o.y0);
+      ctx.clip('evenodd');
       ctx.save();
       ctx.beginPath();
       ctx.rect(a, f.y0 - WALL_HEIGHT, b - a, WALL_HEIGHT);
@@ -641,8 +670,8 @@ function drawCarvedRooms(room) {
       ctx.translate(f.x0, f.y0);
       f.style.wall({ w: f.x1 - f.x0 });
       ctx.restore();
-      const capA = wasSingle && a === f.x0 ? a - SIDE_WALL : a, capB = wasSingle && b === f.x1 ? b + SIDE_WALL : b;
-      box(capA, f.y0 - WALL_HEIGHT - 8, capB - capA, 8, 'rgba(0, 0, 0, 0.35)');
+      box(a - left, f.y0 - WALL_HEIGHT - 8, b - a + left + right, 8, 'rgba(0, 0, 0, 0.35)');
+      ctx.restore();
       drawWallShade(a, f.y0, b - a);
     }
   }

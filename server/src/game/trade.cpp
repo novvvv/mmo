@@ -1,5 +1,5 @@
 // 두 사람의 교환: 신청과 수락, 내놓기, 둘 다 확인하면 한 번에 맞바꾼다.
-#include "core/rules.hpp"
+#include "game/rules.hpp"
 
 void Game::sendTradeState(ConnId id, const Player& p) {
     const auto partnerIt = players_.find(p.tradeWith);

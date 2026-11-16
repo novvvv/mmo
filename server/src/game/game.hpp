@@ -1,13 +1,14 @@
-// 게임 진행: 로그인, 플레이어 상태, 낚시, 고양이, 낮밤 시계.
-// 서버 권한(authoritative) 방식: 클라이언트는 입력만 보내고, 위치와 결과는 서버가 계산한다.
+// 이 게임의 콘텐츠 전부를 맡는 모듈. core(server-core) 위에서 돈다.
+// 집 꾸미기, 농장, 미니게임, 친구 같은 기능의 상태와 명령이 여기 있고, 구현은 기능별 폴더(home/, activity/, social/)와 game/ 에 나뉘어 있다.
+// core 와 만나는 곳은 install(명령 등록)과 Module 의 훅들이다 (game/game.cpp).
 #pragma once
 
-#include "core/accounts.hpp"
 #include "activity/chess.hpp"
 #include "activity/farm.hpp"
-#include "base/worker.hpp"
-#include "core/world.hpp"
-#include "base/ws_server.hpp"
+#include "core/core.hpp"
+#include "game/account_data.hpp"
+#include "game/player_view.hpp"
+#include "game/town.hpp"
 
 #include <cstdint>
 #include <functional>
@@ -17,19 +18,16 @@
 #include <utility>
 #include <vector>
 
-constexpr int kTickRate = 20;  // 초당 틱 수
 // 가방에 담겨 버리고 주고받을 수 있는 것: 물고기, 전리품, 매점 물건, 그 뒤로 농장의 물건(작물·달걀·우유·씨앗·요리)
 constexpr int kBagKinds = kItemKinds + farm::kGoods;
 
+// 이 게임의 설정. core 의 설정(로그인 제한, 낮밤 길이)은 core/core.hpp 의 CoreConfig
 struct GameConfig {
-    int authIterations = 600000;  // PBKDF2 반복 횟수 (OWASP 권장값)
-    int signupLimitPerHour = 10;  // IP 하나가 한 시간에 만들 수 있는 계정 수
-    double halfCycleSec = 1800.0; // 낮 또는 밤이 이어지는 시간
-    int authPerIp = 3;            // IP 하나가 동시에 처리할 수 있는 로그인 수
     double restSec = 60.0;        // 이만큼 앉아서 쉬면 골드 1
     double focusMinuteSec = 60.0; // 집중 타이머의 1분 (시험에서만 줄인다)
     int farmSpeed = 1;            // 작물이 자라고 닭·젖소가 기다리는 시간을 이만큼 나눈다 (시험에서만 올린다)
     int catNapPercent = -1;       // 쉬던 동물이 잠들 확률(%). -1 이면 낮 12, 밤 60 (시험에서만 정한다)
+    int catFurniturePercent = 40; // 쉬고 난 고양이가 방의 고양이 가구로 갈 확률(%)
 };
 
 // 방명록 글 한 개
@@ -50,32 +48,35 @@ struct TodoItem {
     int date = 0;   // 날짜 yyyymmdd (0 이면 날짜를 정하기 전의 예전 할 일)
 };
 
-class Game {
+class Game : public Module {
 public:
-    Game(WsServer& server, AccountStore& accounts, Worker& worker, const GameConfig& config);
+    Game(Core& core, const GameConfig& config);
 
-    void onMessage(ConnId id, const std::string& msg);
-    void onClose(ConnId id);
-    void tick(float dt);
-    void saveAll();
+    // ---- core 의 훅 (game/game.cpp)
+    void install(Core& core) override;
+    std::unique_ptr<PlayerBase> makePlayer() override;
+    void loadPlayer(PlayerBase& base, const Account& account) override;
+    void savePlayer(const PlayerBase& base, Account& account) override;
+    void welcomeFields(const PlayerBase& base, std::string& json) override;
+    void mapFields(std::string& json) override;
+    void stateFields(const PlayerBase& base, std::string& json) override;
+    void onJoin(ConnId id, PlayerBase& base, JoinStep step) override;
+    void onLeave(ConnId id, PlayerBase& base, LeaveStep step) override;
+    void onLogout(const std::string& account) override;
+    void onZoneChange(ConnId id, PlayerBase& base, int from, int to, ZoneStep step) override;
+    void onEnterRoom(ConnId id, int zone) override;
+    bool onChat(ConnId id, PlayerBase& base, const std::string& message) override;
+    bool holdStill(const PlayerBase& base) const override;
+    void cancelHold(PlayerBase& base) override;
+    void onPlayerTick(ConnId id, PlayerBase& base, float dt) override;
+    void onTick(float dt) override;
+    void afterBroadcast(float dt) override;
 
 private:
     enum class FishState { Idle = 0, Waiting = 1, Bite = 2 };  // 값이 그대로 state 메시지에 실린다
 
-    struct Player {
-        std::string account;
-        std::string name;
-        int zone = 0;
-        float x = 0.f;
-        float y = 0.f;
-        uint8_t input = 0;
-        int rgb = 0;  // 몸 색 0xRRGGBB
-        int arms = 1;
-        int legs = 1;
-        int limbColor = 0;
-        float chatTokens = 0.f;
-        float faceX = 1.f;  // 마지막 좌우 이동 방향 (다리 위에서 낚싯대를 던질 쪽)
-        int seat = -1;      // 앉아 있는 자리 번호
+    // 이 게임의 플레이어: core 의 PlayerBase(위치, 모양, 앉은 자리)에 콘텐츠의 값을 더한 것
+    struct Player : PlayerBase {
         FishState fish = FishState::Idle;
         float fishTimer = 0.f;  // 입질까지, 또는 입질이 끝날 때까지 남은 시간
         float bobberX = 0.f;
@@ -106,6 +107,7 @@ private:
         int boardStyle = 0;     // 광고판 모양. 0 기본, 1 도트
         int pets = 0;           // 가진 펫 (펫 번호마다 한 비트)
         int pet = -1;           // 데리고 다니는 펫. 없으면 -1
+        std::string petNames[decor::kPetKinds];  // 지어 준 이름. 비어 있으면 종류 이름으로 부른다
         int emotes = 0;         // 상점에서 산 감정표현 (감정 번호마다 한 비트)
         float restSeconds = 0.f;  // 앉아서 쉰 시간. 1분마다 1골드
         std::vector<std::string> mates;  // 동거인 계정
@@ -126,13 +128,6 @@ private:
         long eggAt = 0, milkAt = 0;          // 마지막으로 달걀과 우유를 거둔 때 (유닉스 초)
         int cooking = -1;                    // 만들고 있는 요리법. 없으면 -1
         double cookAt = 0.0;                 // 요리를 시작한 때
-        bool dirty = false;  // 마지막 저장 이후 바뀐 값이 있는지
-    };
-
-    struct Session {
-        std::string account;  // 로그인에 성공한 계정. 비어 있으면 로그인 전
-        bool authPending = false;
-        int failures = 0;
     };
 
     struct Cat {
@@ -151,6 +146,9 @@ private:
         bool asleep = false;  // 웅크리고 자는 중. timer 가 다 되거나 누가 쓰다듬으면 깬다
         int pet = -1;         // 집에 풀어놓은 펫이면 펫 번호
         std::string owner;    // 풀어놓은 펫의 주인 계정
+        std::string name;     // 주인이 지어 준 이름 (없으면 비어 있다)
+        int perch = -1;       // 쓰고 있는 고양이 가구(캣휠, 캣타워, 숨숨집)의 배치 번호. 고양이는 그 앞에 서 있고 그림은 가구 위에 그린다
+        int perchGoal = -1;   // 그 가구 앞으로 걸어가는 중이면 배치 번호
     };
 
     // 오목: 오목판을 놓은 방마다 한 판. 칸은 0 빈칸, 1 흑, 2 백.
@@ -333,43 +331,23 @@ private:
         long wateredAt = 0;
     };
 
-    struct SignupWindow {
-        double start = 0.0;
-        int count = 0;
-    };
-
-    // 아이디와 IP 조합별 잠금. 다른 사람이 일부러 틀려서 내 계정을 잠그지 못하게 한다.
-    struct LoginLock {
-        int failures = 0;
-        double lockedUntil = 0.0;
-    };
-
-    // 로그인
-    void login(ConnId id, const std::string& arg);
-    // 이어 들어오기: "resume <표>" 는 로그인할 때 받은 표로 비밀번호 없이 다시 들어온다
-    void resume(ConnId id, const std::string& arg);
-    void loadResumeKey();
-    std::string resumeToken(const std::string& account, long expires) const;
-    void authError(ConnId id, const std::string& message);
-    bool allowSignup(const std::string& ip);
-    void beginAuth(const std::string& ip);
-    void endAuth(const std::string& ip);
-    void finishSignup(ConnId id, const std::string& ip, const std::string& username, const std::string& saltHex,
-                      int iterations, const std::string& hashHex);
-    void finishVerify(ConnId id, const std::string& ip, const std::string& username, bool matched);
-    void completeLogin(ConnId id, Account& account, bool isNew);
-    void logout(ConnId id);
-
-    // 입장과 저장
-    void join(ConnId id, const std::string& arg);
-    void placePlayer(Player& p, const Account& account);
-    void syncAccount(Player& p);
-    void persist(const Account& account);
+    // ---- core 에 맡기는 것. 예전 이름 그대로 부를 수 있게 core 로 넘긴다
+    void syncAccount(Player& p) { core_.syncAccount(p); }
+    void persist(const Account& account) { core_.persist(account); }
+    void moveToZone(ConnId id, Player& p, int zone, float x, float y) { core_.moveToZone(id, p, zone, x, y); }
+    void standUp(Player& p) { core_.standUp(p); }
+    bool seatTaken(int seat) const { return core_.seatTaken(seat); }
+    void sendToAll(const std::string& json) { core_.sendToAll(json); }
+    void sendToZone(int zone, const std::string& json) { core_.sendToZone(zone, json); }
+    static std::string systemMessage(const std::string& message) { return Core::systemMessage(message); }
+    std::string timeJson() const { return core_.timeJson(); }
+    Player* onlinePlayer(const std::string& account, ConnId* idOut = nullptr) { return static_cast<Player*>(core_.onlinePlayer(account, idOut)); }
+    // 이 게임의 명령들을 core 에 등록한다
+    void registerCommands();
+    // 저장된 월드(가구, 외관, 농장 …)를 읽는다
+    void loadWorld();
 
     // 플레이어 행동
-    void setInput(Player& p, uint8_t mask);
-    void use(ConnId id, Player& p, const std::string& arg);
-    bool tryDoor(ConnId id, Player& p);
     bool tryLamp(ConnId id, Player& p);
     void setLight(ConnId id, Player& p, const std::string& arg);
     void changeLight(ConnId id, Player& p, const RoomLight& next);
@@ -379,10 +357,6 @@ private:
     void relayRtc(ConnId id, const Player& p, const std::string& arg);
     // 화면을 공유하던 사람이 방을 떠나면 공유를 끝낸다
     void endShareBy(ConnId id, int zone);
-    void moveToZone(ConnId id, Player& p, int zone, float x, float y);
-    bool seatTaken(int seat) const;
-    void toggleSit(Player& p);
-    void chat(ConnId id, Player& p, const std::string& raw);
     void setBoard(ConnId id, Player& p, const std::string& arg);
 
     // 낚시
@@ -399,6 +373,7 @@ private:
     void pickCatTarget(Cat& cat);
     void updateCat(Cat& cat, float dt);
     void stepCat(Cat& cat, float nx, float ny);
+    bool pickCatFurniture(Cat& cat);
     void petCat(ConnId id, Player& p);
     void feedCat(ConnId id, Player& p);
     std::string catEvent(int index, ConnId id, const Player& p, const char* action) const;
@@ -433,6 +408,7 @@ private:
     void buyDecor(ConnId id, Player& p, long kind);
     void buyDye(ConnId id, Player& p);
     void dyeFurniture(ConnId id, Player& p, long number, const std::string& tint, bool again);
+    void dyePlaced(ConnId id, Player& p, long decorId, const std::string& tint);
     void placeDecor(ConnId id, Player& p, long number, float x, float y, bool dyed);
     void seedDecor();
     void floorCommand(ConnId id, Player& p, const std::string& arg);
@@ -440,10 +416,10 @@ private:
     // "close <방향>" 은 비어 있는 확장 방을 다시 막는다
     void expandCommand(ConnId id, Player& p, const std::string& arg);
     // strict 2: 고정 장식과 벽 앞 고정 가구도 피한다, 1: 벽 앞 고정 가구만 피한다, 0: 옮길 수 있는 가구만 본다
-    std::string openingProblem(int zone, int dir, float at, float half, int strict, float len = 0.f, float deep = 0.f) const;
     void loadExpansions();
     void saveExpansions();
-    void applyExpansion(int zone, std::vector<Opening> openings);
+    void applyExpansion(int zone, std::vector<Cell> cells);
+    bool cellsConnected(int zone, const std::vector<Cell>& cells) const;
     std::string floorJson(int zone) const;
     void loadFloors();
     void saveFloors();
@@ -453,6 +429,8 @@ private:
     void buyEmote(ConnId id, Player& p, const std::string& arg);
     void buyPet(ConnId id, Player& p, const std::string& arg);
     void walkPet(ConnId id, Player& p, const std::string& arg);
+    void renamePet(ConnId id, Player& p, const std::string& arg);
+    static std::string petNamesJson(const Player& p);
     void updateRest(ConnId id, Player& p, float dt);
     bool roomHasTv(int zone) const;
     bool lampNear(int zone, float x, float y) const;
@@ -482,6 +460,7 @@ private:
     void sendFocus(FocusRoom& room);
     void sendFocusList(ConnId id, const Player& p);
     void inviteFocus(ConnId id, const Player& p, const FocusRoom& room);
+    void disbandFocus(size_t index, const std::string& note);
     void leaveFocus(const std::string& account, const std::string& name);
     void finishFocus(size_t index, bool cut);
     void updateFocus();
@@ -514,7 +493,6 @@ private:
     void sendGuestbook(int zone);
     std::string guestLastJson() const;
     void guestCommand(ConnId id, Player& p, const std::string& arg);
-    Player* onlinePlayer(const std::string& account, ConnId* idOut = nullptr);
     bool isHouseZone(int zone) const;
     void installDecor(Decor& item);
     void uninstallDecor(const Decor& item);
@@ -522,7 +500,6 @@ private:
     void broadcastDecor(int zone);
     void loadDecor();
     void saveDecor();
-    void standUp(Player& p);
     void dartCommand(ConnId id, Player& p, const std::string& arg);
     std::string dartJson(int zone) const;
     void broadcastDarts(int zone);
@@ -583,8 +560,6 @@ private:
     void finishTrade(ConnId aId, Player& a, ConnId bId, Player& b);
 
     // 전송
-    static std::string systemMessage(const std::string& message);
-    std::string timeJson() const;
     static std::string boardJson(ConnId id, const std::string& shown, int style);
     static std::string myBoardJson(const Player& p);
     std::string boardsJson() const;
@@ -592,24 +567,19 @@ private:
     double tvPosition(const RoomTv& tv) const;
     std::string tvJson(int zone) const;
     void sendRoomStateOnEntry(ConnId id, int zone);
-    void sendToAll(const std::string& json);
-    void sendToZone(int zone, const std::string& json);
-    void broadcastState();
 
+    Core& core_;
     WsServer& server_;
     AccountStore& accounts_;
     Worker& worker_;
     GameConfig config_;
-    World world_;
+    World& world_;
+    Town town_;
+    const double& clock_;            // core 의 시계: 서버 시작 후 경과 시간(초)
+    PlayerView<Player> players_;     // core 의 플레이어 표를 이 게임의 Player 로 본다
     std::mt19937 rng_;
     std::discrete_distribution<int> fishKind_{60.0, 30.0, 10.0};  // 붕어 60%, 메기 30%, 황금잉어 10%
 
-    std::unordered_map<ConnId, Player> players_;
-    std::unordered_map<ConnId, Session> sessions_;
-    std::unordered_map<std::string, ConnId> online_;  // 계정 → 현재 접속 연결
-    std::unordered_map<std::string, SignupWindow> signups_;
-    std::unordered_map<std::string, LoginLock> loginLocks_;  // "IP|아이디" → 잠금 상태
-    std::unordered_map<std::string, int> authByIp_;          // IP → 처리 중인 로그인 수
     std::vector<Cat> cats_;
     std::vector<RoomLight> lights_;  // 구역 번호별 조명
     std::vector<RoomTv> tvs_;        // 구역 번호별 TV
@@ -632,18 +602,11 @@ private:
         int wall = 0, roof = 0, door = 0, deco = 0, form = 0;   // form: 집의 생김새. 0 은 원래 모양
     };
     std::vector<Exterior> exteriors_;  // 구역별 집 외관 (집이 아닌 구역은 쓰지 않는다)
-    std::string resumeKey_;            // 이어 들어오기 표의 서명 열쇠. 데이터 폴더에 남겨 서버를 다시 켜도 그대로 쓴다
-    unsigned long tickCount_ = 0;
     struct Delayed {
         double at;
         int zone;
         std::string json;
     };
-    std::vector<Delayed> delayed_;     // 잠시 뒤에 그 구역에 보낼 메시지 (빠칭코 대박 알림)      // state 메시지의 틱 번호. 화면이 다른 사람의 움직임을 고르게 잇는 데 쓴다
-
-    double clock_ = 0.0;  // 서버 시작 후 경과 시간(초)
-    int authInFlight_ = 0;
+    std::vector<Delayed> delayed_;     // 잠시 뒤에 그 구역에 보낼 메시지 (빠칭코 대박 알림)
     int catTicks_ = 0;
-    float autosaveTimer_ = 0.f;
-    float timeSyncTimer_ = 0.f;
 };

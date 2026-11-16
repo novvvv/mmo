@@ -76,6 +76,32 @@ async function protocol(t) {
   host.send('decor placedyed 0 640 230');
   await host.until(() => decor(host).p.some((d) => d[6]), 1500);
 
+  // ---- 놓인 가구를 그 자리에서 염색
+  const placed = decor(host).p.find((d) => d[1] === LONG_TABLE && d[6]);
+  await pause();
+  guest.send(`decor dyeplaced ${placed[0]} 2f9e5a-100-100`);
+  await guest.until(() => says(guest, '직접 놓았거나'), 1500);
+  t.check('someone else cannot dye your placed furniture', says(guest, '직접 놓았거나'));
+  await pause();
+  host.send(`decor dyeplaced ${placed[0]} 2f9e5a-100-100`);
+  await host.until(() => says(host, '염료가 없습니다'), 1500);
+  t.check('dyeing placed furniture needs a dye too', says(host, '염료가 없습니다') && decor(host).p.find((d) => d[0] === placed[0])[6] === 'd6609a-100-150');
+  await pause();
+  host.send('decor buydye');
+  await host.until(() => inv(host).dye === 1, 1500);
+  await pause();
+  host.send(`decor dyeplaced ${placed[0]} 2f9e5a-100-100`);
+  await guest.until(() => decor(guest).p.find((d) => d[0] === placed[0])?.[6] === '2f9e5a-100-100', 1500);
+  const redyed = decor(host).p.find((d) => d[0] === placed[0]);
+  t.check('placed furniture changes colour where it stands, for everyone', redyed?.[6] === '2f9e5a-100-100' && redyed[2] === placed[2] && redyed[3] === placed[3] && decor(guest).p.find((d) => d[0] === placed[0])?.[6] === '2f9e5a-100-100' && inv(host).dye === 0, JSON.stringify(redyed));
+  t.check('the four new pets are in the shop', host.map.petPrices.length === 12);
+  await pause();
+  host.send('decor buydye');   // 아래 확인들이 원래 색으로 찾으므로 되돌려 둔다
+  await host.until(() => inv(host).dye === 1, 1500);
+  await pause();
+  host.send(`decor dyeplaced ${placed[0]} d6609a-100-150`);
+  await host.until(() => decor(host).p.find((d) => d[0] === placed[0])?.[6] === 'd6609a-100-150', 1500);
+
   // ---- 바닥재
   await pause();
   out.send('floor 3');
@@ -308,7 +334,7 @@ async function browser(t) {
   await enterPage(hompy, { name: 'walker' });
   await hompy.waitForFunction(() => zone === 3, null, { timeout: 4000 });
   t.check('minihompy starts inside 캬캬', await hompy.isVisible('#hompy') && !(await hompy.isVisible('#map-win')));
-  t.check('the tabs list the three houses', (await hompy.textContent('#hompy-tabs')).replace(/의 집/g, '') === '캬캬랏라몰쟈', await hompy.textContent('#hompy-tabs'));
+  t.check('the tabs list the four houses', (await hompy.textContent('#hompy-tabs')).replace(/의 집/g, '') === '캬캬랏라몰쟈헤연', await hompy.textContent('#hompy-tabs'));
   await hompy.click('#hompy-tabs button[data-zone="1"]');
   await hompy.waitForFunction(() => zone === 1, null, { timeout: 3000 });
   t.check('a tab jumps straight into that house', (await hompy.getAttribute('#hompy-tabs button[data-zone="1"]', 'aria-current')) === 'page');

@@ -508,7 +508,7 @@ ROOM_STYLES.push({
 });
 
 // 마을의 농장 입구: 간판을 건 나무 문과 해바라기. 건물 외형 번호 6
-HOUSE_STYLES.push((b, ground, now, lit) => {
+HOUSE_STYLES[6] = (b, ground, now, lit) => {
   const { x } = b;
   for (const side of [-1, 1]) {   // 옆으로 이어진 울타리
     const fx = x + side * 62;
@@ -540,7 +540,7 @@ HOUSE_STYLES.push((b, ground, now, lit) => {
     });
   }
   if (lit) drawGlowSoft(x, ground - 60, 46);
-});
+};
 
 // ------------------------------------------------------------ 그림: 밭 한 칸
 // 밭은 가운데 (x, y) 를 기준으로 104 × 80. 흙은 같고 둘레의 생김새가 여섯 가지다. wet 은 물을 준 지 얼마 안 된 흙

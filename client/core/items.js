@@ -24,6 +24,7 @@ function setInventory(msg) {
   if (msg.em !== undefined) myEmotes = msg.em;
   if (msg.pet !== undefined) myPet = msg.pet;
   if (msg.freed) myFreed = msg.freed;
+  if (msg.pn) myPetNames = msg.pn;
   if (msg.floors !== undefined) {
     myFloors = msg.floors;
     refreshFloorShop();

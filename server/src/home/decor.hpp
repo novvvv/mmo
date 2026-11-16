@@ -6,6 +6,8 @@ namespace decor {
 enum Place { kFloor = 0, kWall = 1, kFlat = 2 };  // 바닥에 세우는 가구, 벽걸이, 위를 밟을 수 있는 깔개
 // 깔개(kFlat)의 halfW, depth 는 충돌 영역이 아니라 기준점을 가운데로 한 그림의 반폭과 반높이다. 깔개가 방 밖으로 나가지 않는지 볼 때 쓴다.
 
+constexpr bool sameName(const char* a, const char* b) { return *a == *b && (*a == '\0' || sameName(a + 1, b + 1)); }
+
 struct Kind {
     const char* kind;   // 그림 종류. 클라이언트의 FURNITURE 표에 대응한다
     int price;
@@ -100,6 +102,13 @@ inline constexpr Kind kCatalog[] = {
     {"garden_scarecrow", 80, 0, 0, kFloor, 0, false, 0, 0, 0, 0, 1},
     {"garden_fence", 30, 0, 0, kFloor, 0, false, 0, 0, 0, 0, 1},
     {"garden_flowers", 50, 40, 22, kFlat, 0, false, 0, 0, 0, 0, 1},
+    // 71~72 방 안에 세우는 벽 한 토막(짧은 것, 긴 것). 돌리면 세로 벽이 되고, 이어 놓기 쉽게 20px 칸에 맞춰 놓인다
+    {"room_wall", 40, 40, 20, kFloor, 0, false, 0, 0, 0, 0, 1},
+    {"room_wall_long", 90, 100, 20, kFloor, 0, false, 0, 0, 0, 0, 1},
+    // 73~75 고양이 가구: 캣타워, 캣휠, 숨숨집
+    {"cat_tower", 260, 30, 22, kFloor, 0, false, 0, 0, 0, 0, 1},
+    {"cat_wheel", 320, 46, 18, kFloor, 0, false, 0, 0, 0, 0, 1},
+    {"cat_hideout", 120, 24, 18, kFloor, 0, false, 0, 0, 0, 0, 1},
 };
 
 inline constexpr int kKinds = static_cast<int>(sizeof(kCatalog) / sizeof(kCatalog[0]));
@@ -108,7 +117,9 @@ inline constexpr int kKinds = static_cast<int>(sizeof(kCatalog) / sizeof(kCatalo
 struct ScaleRange {
     float min, max;
 };
+inline constexpr bool isWallPiece(const Kind& k) { return sameName(k.kind, "room_wall") || sameName(k.kind, "room_wall_long"); }
 inline constexpr ScaleRange scaleRange(const Kind& k) {
+    if (isWallPiece(k)) return {1.f, 1.f};   // 벽은 방의 벽과 같은 높이로만
     if (k.place == kFlat) return {0.6f, 1.6f};
     if (k.place == kWall) return {0.6f, 1.5f};
     if (k.lie) return {0.85f, 1.25f};
@@ -132,7 +143,7 @@ inline Kind scaled(const Kind& k, float s) {
     return out;
 }
 // 위에서 내려다본 그림이라 90도씩 돌려 놓을 수 있는 가구: 깔개와 텃밭, 침대. 나머지는 앞에서 본 그림이라 좌우로만 뒤집는다
-inline constexpr bool rotatable(const Kind& k) { return k.place == kFlat || k.lie; }
+inline constexpr bool rotatable(const Kind& k) { return k.place == kFlat || k.lie || isWallPiece(k); }
 
 // 90도씩 rot 번 돌린 가구 치수. 가로와 세로가 바뀌고, 눕는 자리도 가구의 가운데를 중심으로 함께 돈다.
 // 기준점은 늘 지금 놓인 모양의 것이다 (깔개는 가운데, 침대는 발치 가운데).
@@ -160,7 +171,6 @@ inline Kind turned(const Kind& k, int rot) {
 }
 inline constexpr int kRecordPlayer = 33;  // 놓으면 그 방에 곡 목록이 생긴다
 
-constexpr bool sameName(const char* a, const char* b) { return *a == *b && (*a == '\0' || sameName(a + 1, b + 1)); }
 static_assert(sameName(kCatalog[kRecordPlayer].kind, "record_player"), "레코드 플레이어 번호가 목록과 맞지 않습니다");
 
 // 오락기. 번호 순서가 게임 번호(0 슈팅, 1 벽돌깨기, 2 지뢰찾기, 3 체스)다
@@ -193,7 +203,8 @@ inline constexpr int kFloorPrice = 150;
 inline constexpr int floorPrice() { return kFreeForTesting ? 0 : kFloorPrice; }
 
 // 상점의 펫. 순서가 계정에 저장되는 번호이므로 새 펫은 맨 뒤에만 추가한다. 생김새와 이름은 클라이언트의 PET_KINDS 에 있다.
-inline constexpr int kPetPrices[] = {300, 300, 300, 300, 300, 450, 450, 450};
+inline constexpr int kPetPrices[] = {300, 300, 300, 300, 300, 450, 450, 450, 450, 450, 350, 500};   // 8~11 랙돌, 메인쿤, 턱시도, 허스키
+inline constexpr bool petIsDog(int kind) { return kind == 5 || kind == 6 || kind == 7 || kind == 11; }   // 클라이언트 PET_KINDS 의 dog
 inline constexpr int kPetKinds = static_cast<int>(sizeof(kPetPrices) / sizeof(kPetPrices[0]));
 inline constexpr int petPrice(int kind) { return kFreeForTesting ? 0 : kPetPrices[kind]; }
 
@@ -204,9 +215,9 @@ inline constexpr int kEmoteKinds = static_cast<int>(sizeof(kEmotePrices) / sizeo
 inline constexpr bool emotePaid(int kind) { return kEmotePrices[kind] > 0; }
 inline constexpr int emotePrice(int kind) { return kFreeForTesting ? 0 : kEmotePrices[kind]; }
 
-// 집 확장: 한 방향에 한 번, 벽을 뚫어 방을 하나 붙인다. 테스트 기간에는 0원.
-inline constexpr int kExpandPrice = 500;
-inline constexpr int expandPrice() { return kFreeForTesting ? 0 : kExpandPrice; }
+// 집 확장: 칠한 칸(20px) 하나의 값. 300×300 방 하나(225칸)가 450 G 쯤. 테스트 기간에는 0원.
+inline constexpr int kExpandCellPrice = 2;
+inline constexpr int expandPrice() { return kFreeForTesting ? 0 : kExpandCellPrice; }
 
 // 집 외관(벽, 지붕, 문, 장식)을 한 번 바꾸는 값
 inline constexpr int kExteriorPrice = 100;

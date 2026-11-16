@@ -74,6 +74,63 @@ chatToggle.addEventListener('click', () => {
 
 try { setChatCollapsed(localStorage.getItem(CHAT_COLLAPSED_KEY) === '1'); } catch { /* 저장을 막아 둔 브라우저는 펼친 채로 시작 */ }
 
+// 크기 조절: 창은 왼쪽 아래에 붙어 있으니 오른쪽 위 손잡이를 끌면 오른쪽으로 넓어지고 위로 길어진다.
+// 두 번 누르면 원래 크기. 크기는 이 브라우저에 기억한다.
+const CHAT_SIZE_KEY = 'mmo.chatSize';
+const CHAT_MIN_W = 240, CHAT_MAX_W = 960, CHAT_MIN_LOG_H = 48, CHAT_MAX_LOG_H = 900;
+const chatGrip = document.getElementById('chat-grip');
+
+function setChatSize(size) {
+  if (!size || !Number.isFinite(size.w) || !Number.isFinite(size.h)) {
+    chatEl.classList.remove('sized');
+    return;
+  }
+  const w = Math.round(Math.min(CHAT_MAX_W, Math.max(CHAT_MIN_W, size.w)));
+  const h = Math.round(Math.min(CHAT_MAX_LOG_H, Math.max(CHAT_MIN_LOG_H, size.h)));
+  chatEl.style.setProperty('--chat-w', `${w}px`);
+  chatEl.style.setProperty('--chat-log-h', `${h}px`);
+  chatEl.classList.add('sized');
+  return { w, h };
+}
+
+let chatResize = null;   // 끄는 중: { x, y, w, h, size }
+chatGrip.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  e.stopPropagation();
+  chatGrip.setPointerCapture(e.pointerId);
+  const logStyle = getComputedStyle(chatLog);
+  const pad = parseFloat(logStyle.paddingTop) + parseFloat(logStyle.paddingBottom);
+  const logH = chatLog.childElementCount ? chatLog.getBoundingClientRect().height - pad : CHAT_MIN_LOG_H;
+  chatResize = { x: e.clientX, y: e.clientY, w: chatEl.getBoundingClientRect().width, h: Math.max(CHAT_MIN_LOG_H, logH), size: null };
+  chatEl.classList.add('resizing');
+});
+chatGrip.addEventListener('pointermove', (e) => {
+  if (!chatResize) return;
+  const atBottom = chatLog.scrollHeight - chatLog.scrollTop - chatLog.clientHeight < 24;
+  chatResize.size = setChatSize({
+    w: Math.min(chatResize.w + e.clientX - chatResize.x, window.innerWidth - 24),
+    h: Math.min(chatResize.h + chatResize.y - e.clientY, window.innerHeight - 150),
+  });
+  if (atBottom) chatLog.scrollTop = chatLog.scrollHeight;
+});
+function finishChatResize() {
+  if (!chatResize) return;
+  const { size } = chatResize;
+  chatResize = null;
+  chatEl.classList.remove('resizing');
+  if (size) try { localStorage.setItem(CHAT_SIZE_KEY, JSON.stringify(size)); } catch { /* 이번 접속에만 적용 */ }
+}
+chatGrip.addEventListener('pointerup', finishChatResize);
+chatGrip.addEventListener('pointercancel', finishChatResize);
+chatGrip.addEventListener('dblclick', () => {
+  setChatSize(null);
+  try { localStorage.removeItem(CHAT_SIZE_KEY); } catch { /* 저장을 막아 둔 브라우저 */ }
+  chatLog.scrollTop = chatLog.scrollHeight;
+});
+
+try { setChatSize(JSON.parse(localStorage.getItem(CHAT_SIZE_KEY) || 'null')); } catch { /* 저장된 크기가 없거나 깨졌으면 기본 크기 */ }
+
 // ------------------------------------------------------------ 광고판
 
 const graphemes = typeof Intl.Segmenter === 'function'
@@ -277,7 +334,8 @@ function refreshEmoteShop() {
 }
 
 // 상점을 펴 둔 동안 내 캐릭터가 표정을 짓는 모습을 칸마다 보여 준다.
-setInterval(() => {
+// 스크립트가 모두 실행된 뒤에 시작한다 (먼저 시작하면 아직 불러오지 않은 파일의 값을 쓰다 멈출 수 있다)
+document.addEventListener('DOMContentLoaded', () => setInterval(() => {
   if (furnShop.hidden || shopTab !== 'emotes' || !emoteCells.length) return;
   const self = entities.get(myId);
   if (!self) return;
@@ -290,7 +348,7 @@ setInterval(() => {
     drawCharacter(c, { ...self, x: 42, y: 52, dirX: 0, dirY: 1, moving: false, seat: 0, grip: 0, t: now, emote: i, emoteT: now % EMOTE_MS });
     c.restore();
   });
-}, EMOTE_PREVIEW_MS);
+}, EMOTE_PREVIEW_MS));
 
 function renderEmoteMenu() {
   if (chatEmoteMenu.hidden) return;

@@ -1,5 +1,5 @@
 // 낚시: 던지기, 입질, 낚아채기. 어종은 서버가 정한다.
-#include "core/rules.hpp"
+#include "game/rules.hpp"
 
 void Game::useRod(ConnId id, Player& p) {
     switch (p.fish) {

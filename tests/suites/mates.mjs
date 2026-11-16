@@ -106,8 +106,8 @@ async function protocol(t) {
   // ---- 해제
   await pause();
   b.send('mate remove 0');
-  await a.until(() => mates(a).p.length === 0, 1500);
-  t.check('removing ends it for both', mates(b).p.length === 0);
+  await a.until(() => mates(a).p.length === 0 && mates(b).p.length === 0, 1500);   // 둘에게 따로 가므로 둘 다 기다린다
+  t.check('removing ends it for both', mates(a).p.length === 0 && mates(b).p.length === 0);
   await pause();
   a.send(`decor place ${PLANT} 200 400`);
   await b.until(() => item(b, PLANT, 0), 1500);

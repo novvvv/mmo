@@ -1,5 +1,5 @@
 // 바닥재: 사기(한 번 사면 계속), 깔기, 바닥 염색.
-#include "core/rules.hpp"
+#include "game/rules.hpp"
 
 std::string Game::floorJson(int zone) const {
     return "{\"t\":\"floor\",\"z\":" + std::to_string(zone) + ",\"m\":" + std::to_string(floors_[static_cast<size_t>(zone)]) +

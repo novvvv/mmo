@@ -185,10 +185,19 @@ const ROOM_PETS = {  // 집 안에서 사는 동물. 키는 집 이름, 순서�
   몰쟈: [{ name: '재롱이', dog: true, body: '#fffdf8', dark: '#ded5c5' }],
   캬캬: [{ name: '뭉치', dog: true, body: '#fffdf8', dark: '#ded5c5' }],
 };
-// 상점의 펫. 서버 home/decor.hpp 의 kPetPrices 와 같은 순서다. 마을 고양이들과 집 강아지들, 갈색 강아지 초코
-const PET_KINDS = [...CAT_COATS, ROOM_PETS.몰쟈[0], ROOM_PETS.캬캬[0], { name: '초코', dog: true, body: '#b07a4a', dark: '#7d5232' }];
+// 상점의 펫. 서버 home/decor.hpp 의 kPetPrices 와 같은 순서다. 마을 고양이들과 집 강아지들, 갈색 강아지 초코, 그 뒤에 더한 품종들.
+// 털 무늬(고르면 그림이 덧그린다): points 귀·얼굴·꼬리 끝의 짙은 색, chest 가슴·주둥이·발의 흰 털, tufts 귀 끝 털, size 몸집, tail 꼬리 굵기, husky 늑대 얼굴
+const PET_KINDS = [...CAT_COATS, ROOM_PETS.몰쟈[0], ROOM_PETS.캬캬[0], { name: '초코', dog: true, body: '#b07a4a', dark: '#7d5232' },
+  { name: '랙돌', body: '#f3ece0', dark: '#cbbba5', eye: '#4a8ee0', points: '#6b5546', tail: 6 },
+  { name: '메인쿤', body: '#9a7350', dark: '#5e4430', eye: '#3f7a35', tufts: true, size: 1.25, tail: 6.5 },
+  { name: '턱시도', body: '#26262b', dark: '#141417', eye: '#9be06a', chest: '#f6f3ec' },
+  { name: '허스키', dog: true, husky: true, body: '#7e8792', dark: '#565d66', face: '#f4f2ee', eye: '#62b4ff' }];
 const PET_NAP_MS = 12000;  // 주인이 이만큼 앉아 있으면 따라다니는 펫이 잠든다
 const PET_SPEED = 170;  // 펫이 주인을 따라가는 빠르기 (px/초)
+const PET_PERCH_WAIT_MS = 1500;  // 주인이 고양이 가구 곁에 이만큼 서 있으면 고양이 펫이 그 가구로 간다
+const PET_PERCH_REACH = 130;     // 주인과 고양이 가구의 거리
+const PET_PERCH_LEAVE = 190;     // 주인이 이보다 멀어지면 내려온다
+const PET_PERCH_FRONT = 20;      // 가구를 쓰는 동안 서 있는 곳: 가구 기준점에서 이만큼 앞 (서버 kCatPerchFront)
 
 // 서버의 물고기 종류 번호(k)와 같은 순서. 나올 확률은 서버가 정한다.
 const FISH = [
@@ -245,6 +254,7 @@ let myPets = 0;         // 가진 펫 (펫 번호마다 한 비트)
 let myEmotes = 0;       // 상점에서 구한 감정표현 (감정 번호마다 한 비트)
 let myPet = -1;         // 데리고 다니는 펫
 let myFreed = [];       // 집에 풀어놓은 펫 [[펫 번호, 구역], ...]
+let myPetNames = [];    // 내 펫에게 지어 준 이름 (펫 번호 순서, 비어 있으면 종류 이름)
 let selectedPet = -1;   // 소지품 펫 탭에서 고른 펫
 let myMates = [];       // 동거인 [[닉네임, 접속 중이면 연결 번호 아니면 0], ...]
 let myFloors = 0;       // 산 바닥재 (번호마다 한 비트)

@@ -1,6 +1,6 @@
 // 아이템과 골드: 소지품 개수, 버리기와 줍기(바닥 아이템), 먹기, 매점, 감정표현 사기, HP.
 // 아이템 번호는 물고기, 전리품, 매점 물건, 농장의 물건 순서로 이어진다 (game.hpp 의 kBagKinds).
-#include "core/rules.hpp"
+#include "game/rules.hpp"
 
 void Game::addDrop(int zone, int kind, int amount, float x, float y, ConnId owner) {
     std::uniform_real_distribution<float> scatter(-kDropScatter, kDropScatter);
@@ -93,7 +93,7 @@ std::string Game::countsJson(const int* counts, int size) const {
 
 void Game::sendInventory(ConnId id, const Player& p) {
     server_.send(id, "{\"t\":\"inv\",\"c\":" + countsJson(p.caught, kFishKinds) + ",\"l\":" + countsJson(p.loot, kLootKinds) +
-                         ",\"s\":" + countsJson(p.shop, kShopKinds) + ",\"f\":" + countsJson(p.furn, kDecorKinds) + ",\"fd\":" + dyedJson(p) + ",\"dye\":" + std::to_string(p.dye) + ",\"pets\":" + std::to_string(p.pets) + ",\"em\":" + std::to_string(p.emotes) + ",\"pet\":" + std::to_string(p.pet) + ",\"freed\":" + freedPetsJson(p.account) + ",\"floors\":" + std::to_string(p.floorsOwned) + ",\"g\":" + std::to_string(p.gold) + ",\"w\":" + (p.welcomeReady ? "true" : "false") + "}");
+                         ",\"s\":" + countsJson(p.shop, kShopKinds) + ",\"f\":" + countsJson(p.furn, kDecorKinds) + ",\"fd\":" + dyedJson(p) + ",\"dye\":" + std::to_string(p.dye) + ",\"pets\":" + std::to_string(p.pets) + ",\"em\":" + std::to_string(p.emotes) + ",\"pet\":" + std::to_string(p.pet) + ",\"pn\":" + petNamesJson(p) + ",\"freed\":" + freedPetsJson(p.account) + ",\"floors\":" + std::to_string(p.floorsOwned) + ",\"g\":" + std::to_string(p.gold) + ",\"w\":" + (p.welcomeReady ? "true" : "false") + "}");
 }
 
 std::string Game::dyedJson(const Player& p) {

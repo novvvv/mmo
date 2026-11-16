@@ -6,6 +6,12 @@
 server/build
 server/mmo_server
 server/data
+server-core/build
+server-core/core_server
+server-core/data
+server-core/examples/hello/build
+server-core/examples/hello/hello_server
+server-core/examples/hello/data
 
 # 테스트
 node_modules/

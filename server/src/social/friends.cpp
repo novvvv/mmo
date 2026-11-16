@@ -1,5 +1,5 @@
 // 친구: 신청(접속하지 않은 사람에게도), 수락, 목록과 있는 곳, 끊기.
-#include "core/rules.hpp"
+#include "game/rules.hpp"
 
 // 친구는 서로 수락해야 맺어지고, 신청은 상대가 접속하지 않았어도 계정에 남아 다음에 접속하면 보인다.
 // 친구는 서로의 접속 여부, 있는 곳, 할 일(공개한 경우)을 볼 수 있다. 아이디는 클라이언트에 보내지 않고 목록의 번호로 가리킨다.
@@ -8,7 +8,9 @@
 std::vector<std::string> Game::friendList(const std::string& account, bool requests) {
     if (const Player* online = onlinePlayer(account)) return requests ? online->friendReq : online->friends;
     const Account* stored = accounts_.find(account);
-    return stored ? splitList(requests ? stored->friendReq : stored->friends) : std::vector<std::string>{};
+    if (!stored) return {};
+    const AccountData data = AccountData::read(*stored);
+    return splitList(requests ? data.friendReq : data.friends);
 }
 
 // 계정의 친구 목록이나 받은 신청을 고친다. 접속 중이면 플레이어에 쓰고 목록을 다시 보내고, 아니면 계정 파일에 바로 쓴다.
@@ -22,10 +24,12 @@ void Game::editFriends(const std::string& account, bool requests, const std::fun
     }
     Account* stored = accounts_.find(account);
     if (!stored) return;
-    std::string& csv = requests ? stored->friendReq : stored->friends;
+    AccountData data = AccountData::read(*stored);
+    std::string& csv = requests ? data.friendReq : data.friends;
     std::vector<std::string> list = splitList(csv);
     edit(list);
     csv = joinList(list);
+    data.write(*stored);
     persist(*stored);
 }
 
@@ -42,9 +46,10 @@ void Game::sendFriends(ConnId id, const Player& p) {
     for (size_t i = 0; i < p.friends.size(); ++i) {
         ConnId friendId = 0;
         const Player* online = onlinePlayer(p.friends[i], &friendId);
-        const Account* stored = accounts_.find(p.friends[i]);
-        const std::vector<TodoItem> todo = online ? online->todo : stored ? parseTodo(stored->todo) : std::vector<TodoItem>{};
-        const bool share = online ? online->todoShare : stored ? stored->todoShare : false;
+        const Account* stored = online ? nullptr : accounts_.find(p.friends[i]);
+        const AccountData data = stored ? AccountData::read(*stored) : AccountData{};
+        const std::vector<TodoItem> todo = online ? online->todo : stored ? parseTodo(data.todo) : std::vector<TodoItem>{};
+        const bool share = online ? online->todoShare : stored ? data.todoShare : false;
         const auto counted = [&](const TodoItem& item) { return !p.today || item.date == 0 || item.date == p.today; };   // 오늘 할 일
         const long total = std::count_if(todo.begin(), todo.end(), counted);
         const long done = std::count_if(todo.begin(), todo.end(), [&](const TodoItem& item) { return counted(item) && item.done; });

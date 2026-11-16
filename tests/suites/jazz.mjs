@@ -181,6 +181,15 @@ async function browser(t) {
   await wait(50);
   t.check('a lone song repeats', await page.evaluate(() => __yt.players[0].calls.includes('load') && __yt.players[0].state === 1));
 
+  // 접기: 제목 줄만 남고 음악은 그대로. 다시 펴면 돌아온다
+  const fullHeight = await page.$eval('#jazz', (el) => el.getBoundingClientRect().height);
+  await page.click('#jazz-mini');
+  const miniHeight = await page.$eval('#jazz', (el) => el.getBoundingClientRect().height);
+  t.check('the record card folds down to its title bar', miniHeight < 40 && fullHeight > 100 && await page.isVisible('#jazz-head') && await page.evaluate(() => !__yt.players[0].destroyed && __yt.players[0].state === 1), `${fullHeight} → ${miniHeight}`);
+  await page.screenshot({ path: shot('jazz_mini.png') });
+  await page.click('#jazz-mini');
+  t.check('and unfolds again', (await page.$eval('#jazz', (el) => el.getBoundingClientRect().height)) > 100);
+
   await page.keyboard.press('KeyE');
   t.check('E closes the list but the music goes on', !(await page.isVisible('#jazz-form')) && await page.isVisible('#jazz-video'));
   await pageWalkTo(page, 450, 560, 14);

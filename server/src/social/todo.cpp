@@ -1,5 +1,5 @@
 // 날짜별 할 일. 친구에게 보여 줄 수 있다.
-#include "core/rules.hpp"
+#include "game/rules.hpp"
 
 // 할 일: {"t":"todo","own":1,"n","sh","i":[[글, 다 했는지, 날짜 yyyymmdd], ...]}. 친구의 것은 own 0, 공개하지 않으면 i 가 비어 있다
 static std::string todoItemsJson(const std::vector<TodoItem>& todo) {
@@ -14,9 +14,10 @@ void Game::sendTodo(ConnId id, const Player& p) {
 
 void Game::sendFriendTodo(ConnId id, const std::string& account) {
     const Player* online = onlinePlayer(account);
-    const Account* stored = accounts_.find(account);
-    const std::vector<TodoItem> todo = online ? online->todo : stored ? parseTodo(stored->todo) : std::vector<TodoItem>{};
-    const bool share = online ? online->todoShare : stored && stored->todoShare;
+    const Account* stored = online ? nullptr : accounts_.find(account);
+    const AccountData data = stored ? AccountData::read(*stored) : AccountData{};
+    const std::vector<TodoItem> todo = online ? online->todo : stored ? parseTodo(data.todo) : std::vector<TodoItem>{};
+    const bool share = online ? online->todoShare : stored && data.todoShare;
     server_.send(id, "{\"t\":\"todo\",\"own\":0,\"n\":\"" + text::jsonEscape(nickOf(account)) + "\",\"on\":" + (online ? "1" : "0") + ",\"sh\":" + (share ? "1" : "0") +
                          ",\"i\":[" + (share ? todoItemsJson(todo) : std::string()) + "]}");
 }

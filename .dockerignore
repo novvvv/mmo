@@ -1,6 +1,9 @@
 # Mac에서 빌드한 바이너리가 들어가면 make 가 최신으로 판단해 Linux용으로 다시 빌드하지 않는다.
 server/mmo_server
 server/build
+server-core/core_server
+server-core/build
+server-core/examples/
 # 로컬 계정 데이터와 테스트는 이미지에 넣지 않는다.
 server/data
 tests

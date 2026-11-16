@@ -116,6 +116,42 @@ Account& AccountStore::add(Account account) {
     return accounts_[std::move(key)] = std::move(account);
 }
 
+namespace {
+// core 가 직접 읽는 키. 나머지는 모두 extra 로 간다
+bool coreKey(const std::string& key) {
+    static const char* const kKeys[] = {"v", "id", "salt", "iter", "hash", "nick", "rgb", "hue", "arms", "legs", "limb", "map", "zone", "x", "y"};
+    for (const char* k : kKeys) {
+        if (key == k) return true;
+    }
+    return false;
+}
+}  // namespace
+
+const std::string& Account::get(const std::string& key) const {
+    static const std::string kEmpty;
+    for (const auto& entry : extra) {
+        if (entry.first == key) return entry.second;
+    }
+    return kEmpty;
+}
+
+bool Account::has(const std::string& key) const {
+    for (const auto& entry : extra) {
+        if (entry.first == key) return true;
+    }
+    return false;
+}
+
+void Account::set(const std::string& key, const std::string& value) {
+    for (auto& entry : extra) {
+        if (entry.first == key) {
+            entry.second = value;
+            return;
+        }
+    }
+    extra.emplace_back(key, value);
+}
+
 std::string AccountStore::serialize(const Account& a) {
     std::ostringstream out;
     out << "v=1\n"
@@ -128,29 +164,7 @@ std::string AccountStore::serialize(const Account& a) {
         << "arms=" << a.arms << "\n"
         << "legs=" << a.legs << "\n"
         << "limb=" << a.limbColor << "\n";
-    for (int i = 0; i < kFishKinds; ++i) out << "c" << i << "=" << a.caught[i] << "\n";
-    for (int i = 0; i < kLootKinds; ++i) out << "l" << i << "=" << a.loot[i] << "\n";
-    for (int i = 0; i < kShopKinds; ++i) out << "s" << i << "=" << a.shop[i] << "\n";
-    for (int i = 0; i < kDecorKinds; ++i) out << "f" << i << "=" << a.furn[i] << "\n";
-    out << "dye=" << a.dye << "\n"
-        << "fd=" << a.dyed << "\n";
-    out << "gold=" << a.gold << "\n";
-    out << "boardOn=" << (a.boardOn ? 1 : 0) << "\n"
-        << "board=" << a.boardText << "\n"
-        << "boardStyle=" << a.boardStyle << "\n"
-        << "pets=" << a.pets << "\n"
-        << "emotes=" << a.emotes << "\n"
-        << "pet=" << a.pet << "\n"
-        << "mates=" << a.mates << "\n"
-        << "friends=" << a.friends << "\n"
-        << "freq=" << a.friendReq << "\n"
-        << "todo=" << a.todo << "\n"
-        << "todoShare=" << (a.todoShare ? 1 : 0) << "\n"
-        << "floors=" << a.floorsOwned << "\n"
-        << "goods=" << a.goods << "\n"
-        << "eggAt=" << a.eggAt << "\n"
-        << "milkAt=" << a.milkAt << "\n"
-        << "stats=" << a.stats << "\n";
+    for (const auto& entry : a.extra) out << entry.first << "=" << entry.second << "\n";
     // 위치는 float 를 그대로 되살릴 수 있는 자릿수로 쓴다. 물가에 딱 붙은 좌표가 반올림되면 물 안으로 판정된다.
     out << "map=" << a.mapVersion << "\n";
     out << "zone=" << a.zone << "\n"
@@ -169,7 +183,8 @@ bool AccountStore::parse(const std::string& content, Account& out) {
         const std::string value = line.substr(eq + 1);
         const int number = std::atoi(value.c_str());
 
-        if (key == "id") out.id = value;
+        if (!coreKey(key)) out.set(key, value);
+        else if (key == "id") out.id = value;
         else if (key == "salt") out.saltHex = value;
         else if (key == "iter") out.iterations = number;
         else if (key == "hash") out.hashHex = value;
@@ -179,39 +194,10 @@ bool AccountStore::parse(const std::string& content, Account& out) {
         else if (key == "arms") out.arms = number;
         else if (key == "legs") out.legs = number;
         else if (key == "limb") out.limbColor = number;
-        else if (key == "boardOn") out.boardOn = number != 0;
-        else if (key == "board") out.boardText = value;
-        else if (key == "boardStyle") out.boardStyle = number;
-        else if (key == "pets") out.pets = number;
-        else if (key == "emotes") out.emotes = number;
-        else if (key == "pet") out.pet = number;
-        else if (key == "mates") out.mates = value;
-        else if (key == "friends") out.friends = value;
-        else if (key == "freq") out.friendReq = value;
-        else if (key == "todo") out.todo = value;
-        else if (key == "todoShare") out.todoShare = number != 0;
-        else if (key == "floors") out.floorsOwned = number;
-        else if (key == "stats") out.stats = value;
-        else if (key == "goods") out.goods = value;
-        else if (key == "eggAt") out.eggAt = std::atol(value.c_str());
-        else if (key == "milkAt") out.milkAt = std::atol(value.c_str());
-        else if (key == "dye") out.dye = number;
-        else if (key == "fd") out.dyed = value;
         else if (key == "zone") out.zone = number;
         else if (key == "map") out.mapVersion = number;
         else if (key == "x") out.x = static_cast<float>(std::atof(value.c_str()));
         else if (key == "y") out.y = static_cast<float>(std::atof(value.c_str()));
-        else if (key.size() == 2 && key[0] == 'c' && key[1] >= '0' && key[1] < '0' + kFishKinds)
-            out.caught[key[1] - '0'] = number;
-        else if (key.size() == 2 && key[0] == 'l' && key[1] >= '0' && key[1] < '0' + kLootKinds)
-            out.loot[key[1] - '0'] = number;
-        else if (key.size() == 2 && key[0] == 's' && key[1] >= '0' && key[1] < '0' + kShopKinds)
-            out.shop[key[1] - '0'] = number;
-        else if (key == "gold") out.gold = number;
-        else if (key.size() >= 2 && key.size() <= 3 && key[0] == 'f' && std::isdigit(static_cast<unsigned char>(key[1])) && (key.size() == 2 || std::isdigit(static_cast<unsigned char>(key[2])))) {
-            const int index = std::atoi(key.c_str() + 1);
-            if (index < kDecorKinds) out.furn[index] = number;
-        }
     }
     return !out.id.empty() && !out.saltHex.empty() && !out.hashHex.empty() && out.iterations > 0;
 }

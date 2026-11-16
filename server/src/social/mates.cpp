@@ -1,5 +1,5 @@
 // 동거인: 서로 놓은 가구를 옮기고 치울 수 있는 사이.
-#include "core/rules.hpp"
+#include "game/rules.hpp"
 
 // 내 동거인 목록: [[닉네임, 접속 중이면 연결 번호 아니면 0], ...]. 아이디는 보내지 않는다.
 void Game::sendMates(ConnId id, const Player& p) {
@@ -26,8 +26,10 @@ void Game::setMates(const std::string& account, const std::vector<std::string>& 
     }
     Account* stored = accounts_.find(account);
     if (!stored) return;
-    stored->mates.clear();
-    for (const std::string& mate : mates) stored->mates += (stored->mates.empty() ? "" : ",") + mate;
+    AccountData data = AccountData::read(*stored);
+    data.mates.clear();
+    for (const std::string& mate : mates) data.mates += (data.mates.empty() ? "" : ",") + mate;
+    data.write(*stored);
     persist(*stored);
 }
 
@@ -48,7 +50,7 @@ void Game::mateCommand(ConnId id, Player& p, const std::string& arg) {
             Player* online = onlinePlayer(other);
             std::vector<std::string> theirs = online ? online->mates : std::vector<std::string>{};
             if (!online) {
-                std::istringstream list(otherAccount->mates);
+                std::istringstream list(AccountData::read(*otherAccount).mates);
                 std::string mate;
                 while (std::getline(list, mate, ',')) if (!mate.empty()) theirs.push_back(mate);
             }

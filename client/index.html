@@ -129,6 +129,17 @@
     @supports not selector(::-webkit-scrollbar) {
       #chat-log { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .25) transparent; }
     }
+    /* 크기 조절: 오른쪽 위 손잡이를 끌면 너비와 기록 높이가 바뀐다 (core/chat.js 가 --chat-w, --chat-log-h 를 맞춘다) */
+    #chat.sized { width: min(var(--chat-w), calc(100vw - 24px)); }
+    #chat.sized #chat-log { height: min(var(--chat-log-h), calc(100vh - 150px)); max-height: none; }
+    #chat.resizing, #chat.resizing #chat-log { transition: none; }
+    #chat-grip {
+      position: absolute; top: -1px; right: -1px; z-index: 3; width: 18px; height: 18px; cursor: nesw-resize; touch-action: none;
+      opacity: 0; transition: opacity .15s;
+      background: linear-gradient(225deg, transparent 4px, rgba(255, 255, 255, .55) 4px 5.5px, transparent 5.5px 8px, rgba(255, 255, 255, .55) 8px 9.5px, transparent 9.5px);
+    }
+    #chat:hover #chat-grip, #chat:focus-within #chat-grip, #chat.resizing #chat-grip, body.touch #chat-grip { opacity: 1; }
+    #chat.collapsed #chat-grip { display: none; }
     #chat.collapsed #chat-log { max-height: 0; padding-block: 0; opacity: 0; overflow: hidden; }
     #chat-bar { display: flex; align-items: center; border-top: 1px solid var(--panel-line); }
     #chat.collapsed #chat-bar, #chat-log:empty + #chat-bar { border-top-color: transparent; }
@@ -511,6 +522,8 @@
       #jazz { top: 52px; width: 200px; }
       #bag:not([hidden]) ~ #jazz { display: none; }  /* 좁은 화면에서는 소지품을 보는 동안 숨긴다 */
     }
+    /* 접으면 제목 줄만 남는다. 영상(iframe)은 그대로 두어야 음악이 끊기지 않으므로 숨기지 않고 높이만 0 으로 만든다 */
+    #jazz.mini #jazz-body { height: 0; padding: 0; overflow: hidden; }
     #jazz-body { display: flex; flex-direction: column; gap: 6px; min-height: 0; padding: 8px; overflow-y: auto; }
     .rwin-icon.rec { border-radius: 50%; background: radial-gradient(#ff5d9e 0 2px, #10103a 2.5px); }
     #jazz-video { aspect-ratio: 16 / 9; border: 2px solid var(--r-line); overflow: hidden; background: #000; }
@@ -770,6 +783,7 @@
     #focus-members li { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border: 2px solid var(--r-line); background: var(--r-well); }
     #focus-members li.off { color: var(--r-mute); }
     #focus-members small { margin-left: auto; color: var(--r-mute); font-size: 10px; }
+    #focus-members .focus-pass { flex: none; padding: 1px 6px; font-size: 10px; }
     #focus-actions { display: flex; flex-wrap: wrap; gap: 4px; }
     #focus-actions .rbtn { flex: 1; white-space: nowrap; }
     #focus-start, #focus-make { font-weight: 700; }
@@ -955,6 +969,10 @@
     #omok-actions .rbtn[hidden] { display: none; }
     .rwin-icon.omok { border-radius: 50%; background: radial-gradient(circle at 35% 50%, #23202a 0 30%, transparent 32%), radial-gradient(circle at 70% 50%, #fff 0 30%, #e3b86e 32%); }
     .game-tag { padding: 0 4px; background: var(--r-blue); color: #fff !important; font-weight: 700; }
+    #pet-name-form { display: flex; gap: 4px; }
+    #pet-name { flex: 1; min-width: 0; padding: 3px 6px; border: 2px solid var(--r-line); background: #fff; color: var(--r-ink); font: 12px var(--pixel); }
+    #pet-name:focus { outline: none; border-color: var(--r-blue); }
+    #pet-name-form .rbtn { flex: none; padding: 3px 8px; font-size: 11px; white-space: nowrap; }
     #pet-bar { display: flex; gap: 4px; flex-wrap: wrap; }
     #pet-bar .rbtn { flex: 1; padding: 3px 4px; font-size: 11px; white-space: nowrap; }
     #bag-pet-list small { display: block; color: var(--r-mute); font-size: 9px; }
@@ -965,29 +983,13 @@
     #furn-shop .shop-pane[hidden] { display: none; }
     #shop-tabs { flex-wrap: wrap; }
     /* ---- 집 확장 */
-    #expand-pane { display: flex; gap: 10px; align-items: center; padding: 10px; flex-wrap: wrap; justify-content: center; }
-    #expand-map { width: 260px; height: 190px; border: 2px solid var(--r-line); background: #1d1e22; image-rendering: pixelated; }
-    #expand-pad { display: grid; grid-template-columns: repeat(3, 92px); grid-template-rows: repeat(3, 40px); gap: 4px; align-items: stretch; }
-    #expand-pad .rbtn { padding: 2px 4px; font-size: 11px; line-height: 1.25; white-space: nowrap; }
-    #expand-pad .rbtn.open { background: var(--r-blush); }
-    #expand-pad [data-dir="0"] { grid-area: 1 / 2; }
-    #expand-pad [data-dir="2"] { grid-area: 2 / 1; }
-    #expand-pad [data-dir="3"] { grid-area: 2 / 3; }
-    #expand-pad [data-dir="1"] { grid-area: 3 / 2; }
-    #expand-name { grid-area: 2 / 2; display: flex; align-items: center; justify-content: center; text-align: center; font-weight: 700; font-size: 12px; }
-    #expand-width-box { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; }
-    #expand-width { width: 180px; }
-    #expand-width-value { min-width: 64px; font-variant-numeric: tabular-nums; }
-    #expand-width-box .rbtn { padding: 1px 7px; font-size: 11px; }
-    #expand-resize { flex-basis: 100%; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
-    #expand-resize:empty { display: none; }
-    #expand-sizes { flex-basis: 100%; display: flex; flex-direction: column; gap: 4px; }
-    #expand-sizes:empty { display: none; }
-    .expand-size-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 10px; padding: 4px 6px; border: 2px solid var(--r-line); background: var(--r-well); font-size: 11px; }
-    .expand-size-row label { display: flex; align-items: center; gap: 4px; }
-    .expand-size-row input { width: 110px; }
-    .expand-size-row output { min-width: 44px; font-variant-numeric: tabular-nums; }
-    .expand-size-row .rbtn { padding: 1px 7px; font-size: 11px; }
+    #expand-pane { display: flex; flex-direction: column; gap: 6px; align-items: stretch; padding: 10px; }
+    #expand-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+    #expand-tools .rbtn { padding: 2px 8px; font-size: 11px; }
+    #expand-tools .rbtn[aria-pressed="true"] { box-shadow: inset 2px 2px 0 var(--r-shade); background: var(--r-blush); }
+    #expand-name { font-weight: 700; font-size: 12px; margin-right: auto; }
+    #expand-count { font-size: 11px; color: var(--r-mute); font-variant-numeric: tabular-nums; }
+    #expand-map { display: block; width: 100%; aspect-ratio: 3 / 2; border: 2px solid var(--r-line); background: #1d1e22; cursor: crosshair; touch-action: none; }
     #expand-note { padding: 0 10px 8px; color: var(--r-mute); font-size: 11px; line-height: 1.5; }
     #floor-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 6px; min-height: 0; padding: 8px 10px; overflow-y: auto; }
     .floor-cell canvas { width: 96px; height: 64px; border: 2px solid var(--r-line); }
@@ -1380,6 +1382,10 @@
     </div>
     <div id="bag-pane-pets" class="bag-pane" role="tabpanel" hidden>
       <div id="bag-pet-list"></div>
+      <form id="pet-name-form">
+        <input id="pet-name" maxlength="8" autocomplete="off" aria-label="펫 이름" disabled>
+        <button id="pet-name-save" class="rbtn" type="submit" tabindex="-1" disabled>이름 짓기</button>
+      </form>
       <div id="pet-bar">
         <button id="pet-walk" class="rbtn" type="button" tabindex="-1" disabled>데리고 다니기</button>
         <button id="pet-free" class="rbtn" type="button" tabindex="-1" disabled>이 집에 풀어놓기</button>
@@ -1475,7 +1481,7 @@
     <div id="shop-list"></div>
   </section>
   <section id="jazz" class="rwin" aria-label="레코드판" hidden>
-    <div id="jazz-head" class="rwin-title"><i class="rwin-icon rec" aria-hidden="true"></i><b>레코드판</b><button id="jazz-close" class="rwin-x" type="button" tabindex="-1" aria-label="곡 목록 닫기" hidden>✕</button></div>
+    <div id="jazz-head" class="rwin-title"><i class="rwin-icon rec" aria-hidden="true"></i><b>레코드판</b><button id="jazz-mini" class="rwin-x" type="button" tabindex="-1" aria-expanded="true" aria-label="레코드판 접기" title="접기">–</button><button id="jazz-close" class="rwin-x" type="button" tabindex="-1" aria-label="곡 목록 닫기" hidden>✕</button></div>
     <div id="jazz-body">
     <div id="jazz-video" hidden></div>
     <div id="jazz-now" role="status"></div>
@@ -1666,22 +1672,14 @@
     <div id="emote-list" class="shop-pane" data-pane="emotes" hidden></div>
     <small id="emote-note" class="shop-pane" data-pane="emotes" hidden>한 번 구하면 계속 써요. 채팅창의 <b>표정</b> 버튼에서 고르거나, 채팅에 /하트 처럼 입력하면 돼요.</small>
     <div id="expand-pane" class="shop-pane" data-pane="expand" hidden>
-      <canvas id="expand-map" width="260" height="190" aria-label="집 모양"></canvas>
-      <div id="expand-pad">
-        <button class="rbtn" type="button" tabindex="-1" data-dir="0"></button>
-        <button class="rbtn" type="button" tabindex="-1" data-dir="2"></button>
-        <span id="expand-name"></span>
-        <button class="rbtn" type="button" tabindex="-1" data-dir="3"></button>
-        <button class="rbtn" type="button" tabindex="-1" data-dir="1"></button>
+      <div id="expand-tools">
+        <b id="expand-name"></b>
+        <button id="expand-add" class="rbtn" type="button" tabindex="-1" aria-pressed="true">칠하기</button>
+        <button id="expand-erase" class="rbtn" type="button" tabindex="-1" aria-pressed="false">지우기</button>
+        <button id="expand-zoom" class="rbtn" type="button" tabindex="-1" aria-pressed="false">전체 보기</button>
+        <span id="expand-count"></span>
       </div>
-      <div id="expand-width-box">
-        <label for="expand-width">뚫는 폭</label>
-        <input id="expand-width" type="range" min="80" max="560" step="20" value="120" tabindex="-1">
-        <output id="expand-width-value">120</output>
-        <button id="expand-width-max" class="rbtn" type="button" tabindex="-1">벽 전체</button>
-        <div id="expand-resize" aria-label="뚫어 둔 통로의 폭 바꾸기"></div>
-      </div>
-      <div id="expand-sizes" aria-label="붙인 방의 크기 바꾸기"></div>
+      <canvas id="expand-map" width="540" height="360" aria-label="집 바닥 칠하기. 끌어서 사각형으로 칠하거나 지운다"></canvas>
     </div>
     <small id="expand-note" class="shop-pane" data-pane="expand" hidden></small>
     <div id="ext-pane" class="shop-pane" data-pane="ext" hidden>
@@ -1869,6 +1867,7 @@
     <div id="piano-keys" role="group" aria-label="피아노 건반"></div>
   </div>
   <form id="chat" hidden>
+    <div id="chat-grip" title="끌어서 채팅창 크기 조절 (두 번 누르면 원래 크기)" aria-hidden="true"></div>
     <div id="chat-log" aria-live="polite"></div>
     <div id="chat-bar">
       <input id="chat-input" maxlength="200" placeholder="Enter를 눌러 채팅" autocomplete="off" aria-label="채팅 입력">

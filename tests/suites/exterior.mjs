@@ -17,7 +17,7 @@ async function protocol(t) {
   const porch = await Bot.enter(server, 'porch', { id: ids.porch });
   const plaza = await Bot.enter(server, 'plaza', { id: ids.plaza });
   await wait(100);
-  t.check('everyone gets every house exterior on joining', ext(plaza)?.p.length === 3 && ext(plaza).p.every((r) => r.slice(1).join() === '0,0,0,0,0'), JSON.stringify(ext(plaza)));
+  t.check('everyone gets every house exterior on joining', ext(plaza)?.p.length === 4 && ext(plaza).p.every((r) => r.slice(1).join() === '0,0,0,0,0'), JSON.stringify(ext(plaza)));
 
   plaza.send(`ext ${MOLJA} 1 1 1 1`);
   await plaza.until(() => says(plaza, '문 앞에서만'), 1500);

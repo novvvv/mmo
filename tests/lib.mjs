@@ -46,10 +46,11 @@ function waitForPort(port) {
 
 // 비밀번호 해시 반복을 줄이고 가입 제한을 풀어 빠르게 시험한다. 필요하면 env 로 덮어쓴다.
 // port 를 주면 그 포트로 연다 (끊긴 화면이 같은 주소로 다시 잇는지 볼 때 서버를 같은 자리에서 다시 켠다)
-export async function startServer({ env = {}, dataDir, port: fixedPort } = {}) {
+// binary 를 주면 그 서버를 띄운다 (저장소 루트에서 본 경로, 기본은 이 게임 서버)
+export async function startServer({ env = {}, dataDir, port: fixedPort, binary = 'server/mmo_server' } = {}) {
   const port = fixedPort ?? nextPort++;
   const dir = dataDir ?? mkdtempSync(path.join(tmpdir(), 'mmo-test-'));
-  const child = spawn(path.join(ROOT, 'server', 'mmo_server'), [String(port), path.join(ROOT, 'client'), dir], {
+  const child = spawn(path.join(ROOT, binary), [String(port), path.join(ROOT, 'client'), dir], {
     env: {
       ...process.env,
       MMO_AUTH_ITERATIONS: '1000',
@@ -266,9 +267,17 @@ export async function launchBrowser({ realScrollbars = false } = {}) {
   return chromium.launch({ channel: 'chrome', headless: true, ignoreDefaultArgs: realScrollbars ? ['--hide-scrollbars'] : [] });
 }
 
+// Chrome 이 가끔 탭의 렌더러 프로세스를 띄우지 못하면 newPage 가 끝없이 기다린다 (테스트 코드와 상관없는 브라우저 쪽 문제).
+// 그때 스위트 전체가 멈추지 않도록 시간 제한을 두고 분명한 오류로 끝낸다.
+function inTime(promise, ms, what) {
+  let timer;
+  const limit = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${what}: no answer in ${ms / 1000}s (Chrome did not start a tab)`)), ms); });
+  return Promise.race([promise, limit]).finally(() => clearTimeout(timer));
+}
+
 export async function openPage(browser, server, { viewport = { width: 1100, height: 720 }, scale = 1 } = {}) {
-  const context = await browser.newContext({ viewport, deviceScaleFactor: scale });
-  const page = await context.newPage();
+  const context = await inTime(browser.newContext({ viewport, deviceScaleFactor: scale }), 20000, 'newContext');
+  const page = await inTime(context.newPage(), 20000, 'newPage');
   page.problems = [];
   page.on('pageerror', (e) => page.problems.push(e.message));
   page.on('dialog', (d) => { page.problems.push('dialog: ' + d.message()); d.dismiss(); });

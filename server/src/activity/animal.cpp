@@ -1,5 +1,5 @@
 // 동물: 강가의 고양이와 집 안의 강아지가 돌아다니고 쉬고 잠든다. 쓰다듬기와 먹이 주기. 펫 사기, 데리고 다니기, 집에 풀어놓기.
-#include "core/rules.hpp"
+#include "game/rules.hpp"
 
 // ------------------------------------------------------------ 동물: 강가의 고양이와 집 안의 강아지, 집에 풀어놓은 펫이 돌아다니고 쉬고 잠든다. 쓰다듬기와 먹이 주기.
 
@@ -18,7 +18,7 @@ void Game::placeCats() {
         cat.timer = catRestTime();
         cats_.push_back(cat);
     }
-    for (const CatHome& home : world_.roomCats()) {
+    for (const CatHome& home : town_.roomCats()) {
         Cat cat;
         cat.zone = home.zone;
         cat.slot = static_cast<int>(std::count_if(cats_.begin(), cats_.end(), [&](const Cat& other) { return other.zone == home.zone; }));
@@ -36,7 +36,7 @@ float Game::catRestTime() {
 bool Game::isNight() const {
     using namespace std::chrono;
     const double seconds = duration<double>(system_clock::now().time_since_epoch()).count();
-    return std::fmod(seconds, config_.halfCycleSec * 2.0) >= config_.halfCycleSec;
+    return std::fmod(seconds, core_.config().halfCycleSec * 2.0) >= core_.config().halfCycleSec;
 }
 
 int Game::nearestCat(const Player& p) const {
@@ -85,6 +85,26 @@ void Game::pickCatTarget(Cat& cat) {
     cat.timer = kCatWalkMaxSec;
 }
 
+// 집에 풀어놓은 고양이가 쉬다가 가끔 같은 방의 고양이 가구로 간다. 다른 고양이가 쓰고 있는 가구는 고르지 않는다.
+bool Game::pickCatFurniture(Cat& cat) {
+    if (cat.zone == 0 || cat.pet < 0 || decor::petIsDog(cat.pet)) return false;
+    if (std::uniform_int_distribution<int>(0, 99)(rng_) >= config_.catFurniturePercent) return false;
+    std::vector<const Decor*> free;
+    for (const Decor& d : decor_) {
+        if (d.zone != cat.zone || std::strncmp(decor::kCatalog[d.kind].kind, "cat_", 4) != 0) continue;
+        const bool taken = std::any_of(cats_.begin(), cats_.end(), [&](const Cat& other) { return &other != &cat && (other.perch == d.id || other.perchGoal == d.id); });
+        if (!taken && !world_.blocked(cat.zone, d.x, d.y + kCatPerchFront)) free.push_back(&d);
+    }
+    if (free.empty()) return false;
+    const Decor& chosen = *free[std::uniform_int_distribution<size_t>(0, free.size() - 1)(rng_)];
+    cat.perchGoal = chosen.id;
+    cat.targetX = chosen.x;
+    cat.targetY = chosen.y + kCatPerchFront;
+    cat.walking = true;
+    cat.timer = kCatWalkMaxSec;
+    return true;
+}
+
 void Game::stepCat(Cat& cat, float nx, float ny) {
     if (cat.zone == 0) world_.moveCat(cat.x, cat.y, nx, ny);
     else world_.move(cat.zone, cat.x, cat.y, nx, ny);
@@ -113,6 +133,15 @@ void Game::updateCat(Cat& cat, float dt) {
     }
 
     cat.timer -= dt;
+    if (cat.perch >= 0) {   // 가구 위: 시간이 다 되거나 가구를 치우거나 옮기면 내려온다
+        const auto d = std::find_if(decor_.begin(), decor_.end(), [&](const Decor& item) { return item.id == cat.perch; });
+        const bool still = d != decor_.end() && d->zone == cat.zone && std::hypot(d->x - cat.x, d->y + kCatPerchFront - cat.y) < 2.f;
+        if (still && cat.timer > 0.f) return;
+        cat.perch = -1;
+        cat.asleep = false;
+        cat.timer = catRestTime();
+        return;
+    }
     if (!cat.walking) {
         if (cat.timer > 0.f) return;
         if (cat.asleep) {   // 다 잤다: 잠깐 앉아 있다가 다시 돌아다닌다
@@ -128,7 +157,7 @@ void Game::updateCat(Cat& cat, float dt) {
             cat.timer = std::uniform_real_distribution<float>(40.f, 100.f)(rng_) * (night ? 2.5f : 1.f);
             return;
         }
-        pickCatTarget(cat);
+        if (!pickCatFurniture(cat)) pickCatTarget(cat);
         return;
     }
     const float dx = cat.targetX - cat.x;
@@ -137,6 +166,19 @@ void Game::updateCat(Cat& cat, float dt) {
     if (dist < 4.f || cat.timer <= 0.f) {
         cat.walking = false;
         cat.timer = catRestTime();
+        if (cat.perchGoal >= 0) {   // 가구 앞에 닿았으면 올라탄다. 캣휠은 짧게 달리고, 숨숨집에서는 낮잠을 자기도 한다
+            const auto d = std::find_if(decor_.begin(), decor_.end(), [&](const Decor& item) { return item.id == cat.perchGoal; });
+            if (d != decor_.end() && d->zone == cat.zone && dist < 30.f) {
+                cat.x = d->x;
+                cat.y = d->y + kCatPerchFront;
+                cat.perch = d->id;
+                const bool wheel = std::strcmp(decor::kCatalog[d->kind].kind, "cat_wheel") == 0;
+                const bool hideout = std::strcmp(decor::kCatalog[d->kind].kind, "cat_hideout") == 0;
+                cat.timer = std::uniform_real_distribution<float>(wheel ? 8.f : 25.f, wheel ? 20.f : 70.f)(rng_);
+                cat.asleep = hideout && std::uniform_int_distribution<int>(0, 1)(rng_) == 0;
+            }
+            cat.perchGoal = -1;
+        }
         return;
     }
     const float step = kCatSpeed * dt;
@@ -157,6 +199,7 @@ void Game::petCat(ConnId id, Player& p) {
     Cat& cat = cats_[static_cast<size_t>(index)];
     const bool woke = cat.asleep;
     cat.asleep = false;
+    cat.perch = cat.perchGoal = -1;   // 쓰다듬으면 가구에서 내려온다
     if (cat.followTimer <= 0.f) {  // 쓰다듬는 동안 제자리에 앉아 있는다
         cat.walking = false;
         cat.timer = kCatPetRestSec;
@@ -185,6 +228,7 @@ void Game::feedCat(ConnId id, Player& p) {
     Cat& cat = cats_[static_cast<size_t>(index)];
     cat.walking = false;
     cat.asleep = false;
+    cat.perch = cat.perchGoal = -1;
     cat.followId = id;
     cat.followTimer = kCatFollowSec;
 
@@ -200,13 +244,19 @@ void Game::feedCat(ConnId id, Player& p) {
 void Game::broadcastCats() {
     if (players_.empty()) return;
     std::vector<std::string> byZone(static_cast<size_t>(world_.zoneCount()));
-    char buf[32];
+    char buf[64];
     for (const Cat& cat : cats_) {
         std::string& list = byZone[static_cast<size_t>(cat.zone)];
-        if (cat.asleep) std::snprintf(buf, sizeof(buf), "%s[%.0f,%.0f,%d,1]", list.empty() ? "" : ",", cat.x, cat.y, cat.pet);
+        if (cat.perch >= 0) std::snprintf(buf, sizeof(buf), "%s[%.0f,%.0f,%d,%d,%d]", list.empty() ? "" : ",", cat.x, cat.y, cat.pet, cat.asleep ? 1 : 0, cat.perch);   // 다섯째는 쓰는 고양이 가구
+        else if (cat.asleep) std::snprintf(buf, sizeof(buf), "%s[%.0f,%.0f,%d,1]", list.empty() ? "" : ",", cat.x, cat.y, cat.pet);
         else if (cat.pet >= 0) std::snprintf(buf, sizeof(buf), "%s[%.0f,%.0f,%d]", list.empty() ? "" : ",", cat.x, cat.y, cat.pet);
         else std::snprintf(buf, sizeof(buf), "%s[%.0f,%.0f]", list.empty() ? "" : ",", cat.x, cat.y);
         list += buf;
+        if (!cat.name.empty()) {   // 이름을 지어 준 펫: 여섯째에 이름 (빈 자리는 채운다)
+            list.pop_back();
+            if (cat.perch < 0) list += cat.asleep ? ",-1" : ",0,-1";
+            list += ",\"" + text::jsonEscape(cat.name) + "\"]";
+        }
     }
     for (int zone = 0; zone < world_.zoneCount(); ++zone) {
         const std::string& list = byZone[static_cast<size_t>(zone)];
@@ -246,7 +296,37 @@ void Game::walkPet(ConnId id, Player& p, const std::string& arg) {
     sendInventory(id, p);
 }
 
-// 한 줄에 "<주인 계정>\t<펫 번호>\t<구역>". 서버를 다시 켜면 집 문 안쪽에서 다시 돌아다닌다.
+// "<펫 번호> <이름>": 내 펫에게 이름을 지어 준다. 이름을 비우면 종류 이름으로 돌아간다.
+// 데리고 다니면 state 의 pn 으로, 풀어놓았으면 cats 의 여섯째로 모두에게 보인다.
+void Game::renamePet(ConnId id, Player& p, const std::string& arg) {
+    const size_t space = arg.find(' ');
+    long kind = -1;
+    if (!parseWhole(arg.substr(0, space).c_str(), kind) || kind < 0 || kind >= decor::kPetKinds || !(p.pets & (1 << kind)) || !spendAction(p)) return;
+    const std::string name = space == std::string::npos ? "" : text::sanitize(arg.substr(space + 1), kMaxPetNameChars);
+    if (name == p.petNames[kind]) return;
+    p.petNames[kind] = name;
+    p.dirty = true;
+    bool freed = false;
+    for (Cat& cat : cats_) {
+        if (cat.pet == kind && cat.owner == p.account) {
+            cat.name = name;
+            freed = true;
+        }
+    }
+    if (freed) {
+        savePets();
+        broadcastCats();
+    }
+    sendInventory(id, p);
+}
+
+std::string Game::petNamesJson(const Player& p) {
+    std::string json = "[";
+    for (int i = 0; i < decor::kPetKinds; ++i) json += (i ? ",\"" : "\"") + text::jsonEscape(p.petNames[i]) + "\"";
+    return json + "]";
+}
+
+// 한 줄에 "<주인 계정>\t<펫 번호>\t<구역>\t<지어 준 이름>". 서버를 다시 켜면 집 문 안쪽에서 다시 돌아다닌다.
 void Game::loadPets() {
     std::ifstream file(accounts_.dir() + "/pets.list");
     std::string line;
@@ -263,6 +343,7 @@ void Game::loadPets() {
         cat.timer = catRestTime();
         cat.pet = static_cast<int>(kind);
         cat.owner = f[0];
+        if (f.size() > 3) cat.name = text::sanitize(f[3], kMaxPetNameChars);
         cats_.push_back(cat);
     }
     renumberCats();
@@ -271,7 +352,7 @@ void Game::loadPets() {
 void Game::savePets() {
     std::string content;
     for (const Cat& cat : cats_) {
-        if (cat.pet >= 0) content += cat.owner + "\t" + std::to_string(cat.pet) + "\t" + std::to_string(cat.zone) + "\n";
+        if (cat.pet >= 0) content += cat.owner + "\t" + std::to_string(cat.pet) + "\t" + std::to_string(cat.zone) + "\t" + cat.name + "\n";
     }
     worker_.post([path = accounts_.dir() + "/pets.list", content = std::move(content)] { AccountStore::writeAtomic(path, content); });
 }
@@ -321,6 +402,7 @@ void Game::releasePet(ConnId id, Player& p, const std::string& arg) {
     cat.timer = catRestTime();
     cat.pet = static_cast<int>(kind);
     cat.owner = p.account;
+    cat.name = p.petNames[kind];
     cats_.push_back(cat);
     renumberCats();
     savePets();

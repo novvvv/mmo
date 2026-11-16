@@ -30,7 +30,7 @@ function treeScale(t) {
 }
 
 function drawCatHead(hx, hy, coat) {
-  ctx.fillStyle = coat.body;
+  ctx.fillStyle = coat.points || coat.body;   // 포인트 무늬는 귀가 짙다
   ctx.beginPath();
   for (const side of [-1, 1]) {  // 귀
     ctx.moveTo(hx + side * 7.5, hy - 2);
@@ -39,7 +39,20 @@ function drawCatHead(hx, hy, coat) {
     ctx.closePath();
   }
   ctx.fill();
+  if (coat.tufts) {   // 메인쿤: 귀 끝에 살짝 솟은 털 뭉치
+    ctx.fillStyle = coat.dark;
+    ctx.beginPath();
+    for (const side of [-1, 1]) {
+      ctx.moveTo(hx + side * 5.6, hy - 11);
+      ctx.lineTo(hx + side * 7, hy - 14.5);
+      ctx.lineTo(hx + side * 7.4, hy - 10.5);
+      ctx.closePath();
+    }
+    ctx.fill();
+  }
   fillCircles(coat.body, [[hx, hy, 8]]);
+  if (coat.points) fillCircles(coat.points, [[hx + 3, hy + 0.5, 4.6]]);   // 눈과 코를 감싼 짙은 얼굴
+  if (coat.chest) fillCircles(coat.chest, [[hx + 3, hy + 3, 3.4]]);       // 흰 주둥이
   fillCircles(coat.eye, [[hx + 0.5, hy - 1, 1.5], [hx + 5.5, hy - 1, 1.5]]);
   fillCircles('#e58a9a', [[hx + 3, hy + 2.5, 1.2]]);  // 코
 }
@@ -66,11 +79,11 @@ function closedEyes(color, eyes) {
 
 // 식빵처럼 웅크리고 자는 고양이: 몸을 둥글게 말고 꼬리로 감싼다. 숨 쉴 때마다 등이 오르내린다
 function drawCatAsleep(c, now) {
-  const { coat } = c, breath = Math.sin(now / 900) * 0.8;
+  const { coat } = c, breath = Math.sin(now / 900) * 0.8, k = coat.size || 1;
   ctx.save();
   ctx.translate(c.x, c.y);
-  groundShadow(0, 1, 17, 4.5);
-  ctx.scale(c.dir, 1);
+  groundShadow(0, 1, 17 * k, 4.5 * k);
+  ctx.scale(c.dir * k, k);
   oval(-1, -7 - breath / 2, 15, 7.5 + breath, coat.body);
   ctx.lineCap = 'round';
   ctx.strokeStyle = coat.dark;
@@ -127,15 +140,15 @@ function drawCat(c, now) {
     drawCatAsleep(c, now);
     return;
   }
-  const { coat } = c;
+  const { coat } = c, k = coat.size || 1;
   ctx.save();
   ctx.translate(c.x, c.y);
-  groundShadow(0, 1, c.moving ? 18 : 13, 4.5);
+  groundShadow(0, 1, (c.moving ? 18 : 13) * k, 4.5 * k);
 
-  ctx.scale(c.dir, 1);  // 그림은 오른쪽을 보고 있다
+  ctx.scale(c.dir * k, k);  // 그림은 오른쪽을 보고 있다
   ctx.lineCap = 'round';
-  ctx.strokeStyle = coat.dark;
-  ctx.lineWidth = 3.5;
+  ctx.strokeStyle = coat.points || coat.dark;
+  ctx.lineWidth = coat.tail || 3.5;
   ctx.beginPath();
   if (c.moving) {
     ctx.moveTo(-13, -14);
@@ -153,11 +166,21 @@ function drawCat(c, now) {
       ctx.fillRect(lx, -9, 3.5, 9 - Math.max(0, stride * phase) * 3);
     }
     oval(0, -13, 15, 8.5, coat.body);
+    if (coat.chest) {   // 턱시도: 흰 가슴과 흰 발
+      oval(10, -11, 5, 5.5, coat.chest);
+      ctx.fillStyle = coat.chest;
+      for (const lx of [-10, -5, 6, 11]) ctx.fillRect(lx, -2.5, 3.5, 2.5);
+    }
     drawCatHead(14, -21, coat);
   } else {
     oval(-1, -12, 9.5, 12, coat.body);
     ctx.fillStyle = coat.dark;
     ctx.fillRect(3, -11, 3.5, 11);  // 앞다리
+    if (coat.chest) {
+      oval(3, -14, 4.5, 7, coat.chest);
+      ctx.fillStyle = coat.chest;
+      ctx.fillRect(3, -2.5, 3.5, 2.5);
+    }
     drawCatHead(2, -28, coat);
   }
   ctx.restore();
@@ -170,7 +193,30 @@ function fluff(coat, circles) {
 }
 
 // 복슬강아지: 귀 없이 얼굴을 감싸는 풍성한 털, 짧은 주둥이
+// 허스키: 쫑긋한 귀, 회색 머리에 흰 얼굴 무늬, 파란 눈
+function drawHuskyHead(hx, hy, coat) {
+  ctx.fillStyle = coat.body;
+  ctx.beginPath();
+  for (const side of [-1, 1]) {
+    ctx.moveTo(hx + side * 9.5, hy - 2);
+    ctx.lineTo(hx + side * 7.5, hy - 15);
+    ctx.lineTo(hx + side * 1.5, hy - 7);
+    ctx.closePath();
+  }
+  ctx.fill();
+  fillCircles('#f2c4c8', [[hx - 6.8, hy - 7, 1.8], [hx + 6.8, hy - 7, 1.8]]);   // 귀 안쪽
+  fluff(coat, [[hx, hy + 1, 10]]);
+  fillCircles(coat.face, [[hx + 3, hy + 4, 6], [hx - 2.5, hy - 2.5, 2.6], [hx + 7.5, hy - 2.5, 2.6], [hx + 2.5, hy - 6, 2]]);   // 흰 얼굴과 눈썹 무늬
+  fillCircles(coat.eye, [[hx - 2, hy - 1, 1.9], [hx + 7, hy - 1, 1.9]]);
+  fillCircles('#1b1b1b', [[hx - 2, hy - 1, 0.9], [hx + 7, hy - 1, 0.9], [hx + 3, hy + 3, 2]]);
+  fillCircles('#ef8fa0', [[hx + 3, hy + 7, 1.5]]);
+}
+
 function drawDogHead(hx, hy, coat) {
+  if (coat.husky) {
+    drawHuskyHead(hx, hy, coat);
+    return;
+  }
   const ruff = [];
   for (let i = 0; i < 12; i++) {  // 얼굴을 감싸는 털
     const a = (i / 12) * TAU;
@@ -201,6 +247,7 @@ function drawDog(d, now) {
     ctx.fillStyle = coat.dark;
     for (const [lx, phase] of [[-10, 1], [-5, -1], [5, -1], [10, 1]]) ctx.fillRect(lx, -7, 4, 7 - Math.max(0, stride * phase) * 2.5);
     fluff(coat, [[-10, -13, 8], [-3, -17, 9], [5, -16, 9], [11, -12, 8], [-7, -8, 6.5], [1, -8, 7.5], [8, -8, 6.5]]);
+    if (coat.face) fillCircles(coat.face, [[10, -10, 5.5]]);   // 허스키의 흰 가슴
     drawDogHead(14, -25, coat);
   } else {
     fluff(coat, [[-13, -9, 6], [-17 + wag * 0.5, -16, 7], [-13 + wag, -23, 6.5], [-7 + wag, -24, 5]]);
@@ -208,6 +255,7 @@ function drawDog(d, now) {
     ctx.fillRect(-2, -7, 4, 7);
     ctx.fillRect(5, -7, 4, 7);  // 앞다리
     fluff(coat, [[-8, -7, 7.5], [2, -6, 8], [-7, -15, 8.5], [3, -15, 9], [-2, -22, 9]]);
+    if (coat.face) fillCircles(coat.face, [[4, -17, 6]]);
     drawDogHead(3, -32, coat);
   }
   ctx.restore();

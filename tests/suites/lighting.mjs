@@ -2,7 +2,7 @@
 import path from 'node:path';
 import { Bot, enterGame, launchBrowser, pageHint, pageSelf, serverWithAccounts, SHOTS, wait } from '../lib.mjs';
 
-const MOLJA = 1, RARA = 2;
+const MOLJA = 1, RARA = 2, FARM = 8;   // 집은 모두 조명이 있고, 농장에는 없다
 const shot = (name) => path.join(SHOTS, name);
 
 const lights = (bot) => bot.events.filter((e) => e.t === 'light');
@@ -17,7 +17,7 @@ async function change(actor, watcher, command) {
 
 async function protocol(t) {
   const { server, ids } = await serverWithAccounts({
-    near: [MOLJA, 520, 340], far: [MOLJA, 250, 300], door: [MOLJA, 340, 400], rara: [RARA, 300, 200], outside: [0, 720, 620], late: [MOLJA, 250, 360],
+    near: [MOLJA, 520, 340], far: [MOLJA, 250, 300], door: [MOLJA, 340, 400], rara: [FARM, 600, 700], cabin: [RARA, 300, 420], outside: [0, 720, 620], late: [MOLJA, 250, 360],
   });
   const enter = async (name) => {
     const bot = await Bot.enter(server, name, { id: ids[name] });
@@ -32,7 +32,9 @@ async function protocol(t) {
   t.check('map tells the lamp reach', near.map.lampReach === 56, near.map.lampReach);
   t.check('molja room is where the test expects', near.map.buildings.find((b) => b.name === '몰쟈').room === MOLJA && near.zone === MOLJA);
   t.check('entering the room gives the light state', state(near) === 'true/true/100', state(near));
-  t.check('other rooms have no light state', lights(rara).length === 0, state(rara));
+  t.check('places without lighting have no light state', rara.zone === FARM && lights(rara).length === 0, state(rara));
+  const cabin = await enter('cabin');
+  t.check('every house has its own lights, 랏라 too', cabin.zone === RARA && last(cabin)?.on === true && last(cabin).lv === 100, state(cabin));
   t.check('outdoors has no light state', lights(outside).length === 0, state(outside));
 
   // ---- 방 안의 모두에게 같은 상태
@@ -44,7 +46,7 @@ async function protocol(t) {
   await change(far, near, 'light level 40');
   t.check('anyone in the room can dim', state(near) === 'false/false/40', state(near));
   await wait(60);
-  t.check('other rooms do not hear about it', lights(rara).length === 0 && lights(outside).length === 0);
+  t.check('other rooms do not hear about it', lights(rara).length === 0 && lights(outside).length === 0 && lights(cabin).length === 1);
 
   await change(near, far, 'light level 5');
   t.check('level has a floor', last(far).lv === 10, last(far).lv);
@@ -167,7 +169,7 @@ const setLevel = async (page, value) => {
 
 async function ui(t) {
   const { server, ids } = await serverWithAccounts({
-    host: [MOLJA, 520, 340], guest: [MOLJA, 250, 360], door: [MOLJA, 340, 400], rara: [RARA, 300, 200], outside: [0, 720, 620],
+    host: [MOLJA, 520, 340], guest: [MOLJA, 250, 360], door: [MOLJA, 340, 400], rara: [FARM, 600, 700], outside: [0, 720, 620],
   });
   const browser = await launchBrowser();
   const open = (name, options = {}) => enterGame(browser, server, ids[name], { name, ...options });
@@ -184,7 +186,7 @@ async function ui(t) {
   const rara = await open('rara');
   const outside = await open('outside');
   await wait(300);
-  t.check('other rooms have no light controls', !(await rara.isVisible('#light-panel')));
+  t.check('places without lighting have no light controls', !(await rara.isVisible('#light-panel')));
   t.check('outdoors has no light controls', !(await outside.isVisible('#light-panel')));
   await rara.close();
   await outside.close();

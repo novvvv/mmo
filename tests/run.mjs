@@ -6,10 +6,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ROOT } from './lib.mjs';
 
-const ALL = ['auth', 'net', 'world', 'seats', 'nature', 'cats', 'housing', 'cafe', 'daynight', 'chat', 'board', 'lighting', 'piano', 'color', 'emote', 'inventory', 'roomcats', 'kyakya', 'theater', 'jazz', 'darts', 'pixel', 'furniture', 'cinema', 'economy', 'christmas', 'windows', 'tv', 'ui', 'mobile', 'record', 'homedeco', 'games', 'mates', 'expand', 'arcade', 'social', 'casino', 'exterior', 'reconnect', 'share', 'focus', 'farm', 'garden', 'resize'];
+const ALL = ['auth', 'net', 'world', 'seats', 'nature', 'cats', 'housing', 'cafe', 'daynight', 'chat', 'board', 'lighting', 'piano', 'color', 'emote', 'inventory', 'roomcats', 'kyakya', 'theater', 'jazz', 'darts', 'pixel', 'furniture', 'cinema', 'economy', 'christmas', 'windows', 'tv', 'ui', 'mobile', 'record', 'homedeco', 'games', 'mates', 'expand', 'arcade', 'social', 'casino', 'exterior', 'reconnect', 'share', 'focus', 'farm', 'garden', 'resize', 'core', 'loading', 'catfurniture', 'petname', 'relogin'];
 const selected = process.argv.slice(2).length ? process.argv.slice(2) : ALL;
 
 const JOBS = Number(process.env.TEST_JOBS) || 6;
+const SUITE_LIMIT_SEC = Number(process.env.TEST_SUITE_LIMIT_SEC) || 300;
 
 let passed = 0;
 const failures = [];
@@ -22,6 +23,7 @@ function reporter(suite) {
       if (ok) {
         passed++;
         this.passed++;
+        if (process.env.TEST_TRACE) console.log(`ok    [${suite}] ${name}`);   // 멈춘 스위트가 어디까지 했는지 볼 때
         return;
       }
       this.failed++;
@@ -63,12 +65,20 @@ async function runSuite(name) {
   const t = reporter(name);
   const suiteStart = Date.now();
   const { default: run } = await import(`./suites/${name}.mjs`);
+  // 어떤 호출이 끝없이 기다리면 전체 실행이 멈추므로, 스위트마다 시간 제한을 둔다.
+  // 제한에 걸리면 실패로 적고 다음 스위트로 넘어간다 (남은 서버는 끝날 때 정리된다).
+  let timer;
+  const limit = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timed out after ${SUITE_LIMIT_SEC}s`)), SUITE_LIMIT_SEC * 1000);
+  });
   try {
-    await run(t);
+    await Promise.race([run(t), limit]);
   } catch (err) {
     t.failed++;
     failures.push(`[${name}] crashed: ${err.stack}`);
     console.log(`FAIL  [${name}] crashed: ${err.stack}`);
+  } finally {
+    clearTimeout(timer);
   }
   console.log(`${name.padEnd(10)} ${t.passed} passed, ${t.failed} failed (${((Date.now() - suiteStart) / 1000).toFixed(0)}s)`);
 }

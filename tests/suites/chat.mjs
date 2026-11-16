@@ -105,6 +105,39 @@ async function chatWindow(t) {
   t.check('reading older lines is not interrupted', await page.$eval('#chat-log', (el) => el.scrollTop === 0));
   t.check('expanded chat has no unread badge', (await unread(page)) === '');
 
+  // ---- 크기 조절: 오른쪽 위 손잡이를 끌면 넓어지고 길어진다
+  const box = async () => page.evaluate(() => ({ w: chatEl.getBoundingClientRect().width, h: chatLog.getBoundingClientRect().height, left: chatEl.getBoundingClientRect().left, bottom: chatEl.getBoundingClientRect().bottom }));
+  const before = await box();
+  await page.hover('#chat-log');
+  t.check('resize grip shows on hover', await page.$eval('#chat-grip', (el) => getComputedStyle(el).opacity === '1'));
+  const grip = await page.$eval('#chat-grip', (el) => { const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+  await page.mouse.move(grip.x, grip.y);
+  await page.mouse.down();
+  await page.mouse.move(grip.x + 160, grip.y - 120, { steps: 6 });
+  await page.mouse.up();
+  const bigger = await box();
+  t.check('dragging the grip widens and lengthens the chat', Math.abs(bigger.w - before.w - 160) <= 2 && Math.abs(bigger.h - before.h - 120) <= 2, JSON.stringify({ before, bigger }));
+  t.check('the chat stays anchored at the bottom left', bigger.left === before.left && bigger.bottom === before.bottom);
+  await page.screenshot({ path: path.join(SHOTS, 'chat_resized.png') });
+  await page.mouse.move(grip.x + 160, grip.y - 120);
+  await page.mouse.down();
+  await page.mouse.move(grip.x - 600, grip.y + 600, { steps: 6 });
+  await page.mouse.up();
+  const smallest = await box();
+  t.check('it cannot shrink past a usable size', smallest.w === 240 && smallest.h >= 47, JSON.stringify(smallest));
+  await page.mouse.move(grip.x, grip.y);
+  await page.mouse.down();
+  await page.mouse.move(grip.x + 5000, grip.y - 5000, { steps: 4 });
+  await page.mouse.up();
+  const largest = await box();
+  const view = page.viewportSize();
+  t.check('it cannot grow past the screen', largest.w <= view.width - 24 && largest.h <= view.height - 150, JSON.stringify({ largest, view }));
+  await page.mouse.move(grip.x, grip.y);
+  await page.mouse.down();
+  await page.mouse.move(grip.x + 160, grip.y - 120, { steps: 6 });
+  await page.mouse.up();
+  const sized = await box();
+
   // ---- 다음 접속에도 접은 상태 유지
   await page.$eval('#chat-log', (el) => { el.scrollTop = el.scrollHeight; });
   await page.click('#chat-toggle');
@@ -122,6 +155,14 @@ async function chatWindow(t) {
   await enterPage(page, {});
   await wait(200);
   t.check('expanded state is remembered too', (await page.getAttribute('#chat-toggle', 'aria-expanded')) === 'true');
+  await page.evaluate(() => { for (let i = 0; i < 30; i++) addChatLine(`다시 채운 줄 ${i}`); });
+  const remembered = await box();
+  t.check('the chosen size is remembered', Math.abs(remembered.w - sized.w) <= 1 && Math.abs(remembered.h - sized.h) <= 1, JSON.stringify({ sized, remembered }));
+  await page.hover('#chat-log');
+  await page.dblclick('#chat-grip');
+  const reset = await box();
+  t.check('double-clicking the grip restores the default size', Math.abs(reset.w - before.w) <= 1 && Math.abs(reset.h - before.h) <= 1, JSON.stringify({ before, reset }));
+  t.check('the reset is remembered', await page.evaluate(() => localStorage.getItem('mmo.chatSize') === null));
 
   // localStorage 를 막아 둔 브라우저에서도 동작한다
   const context = await browser.newContext({ viewport: { width: 900, height: 600 } });

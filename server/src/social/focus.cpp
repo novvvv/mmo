@@ -1,5 +1,5 @@
 // 함께 집중: 모임을 모아 같은 타이머를 켠다.
-#include "core/rules.hpp"
+#include "game/rules.hpp"
 
 Game::FocusRoom* Game::focusOf(const std::string& account) {
     for (FocusRoom& room : focus_) {
@@ -69,6 +69,10 @@ void Game::leaveFocus(const std::string& account, const std::string& name) {
         const auto it = std::find_if(room.members.begin(), room.members.end(), [&](const FocusMember& m) { return m.account == account; });
         if (it == room.members.end()) continue;
         const bool wasHost = it == room.members.begin();
+        if (wasHost && room.members.size() > 1) {   // 방장이 나가면 모임이 흩어진다. 남기고 싶으면 먼저 방장을 넘긴다
+            disbandFocus(i, name + "님(방장)이 나가서 집중 모임이 해체되었어요.");
+            return;
+        }
         room.members.erase(it);
         ConnId who = 0;
         if (Player* online = onlinePlayer(account, &who)) {
@@ -79,14 +83,31 @@ void Game::leaveFocus(const std::string& account, const std::string& name) {
             focus_.erase(focus_.begin() + static_cast<long>(i));
             return;
         }
-        std::string note = name + "님이 집중 모임에서 나갔어요.";
-        if (wasHost) note += " 이제 " + nickOf(room.members.front().account) + "님이 방장이에요.";
+        const std::string note = name + "님이 집중 모임에서 나갔어요.";
         for (const FocusMember& m : room.members) {
             if (onlinePlayer(m.account, &who)) server_.send(who, systemMessage(note));
         }
         sendFocus(room);
         return;
     }
+}
+
+// 모임을 없앤다. 도는 중이었으면 일찍 끝낸 것처럼 함께한 시간을 기록에 남긴다.
+void Game::disbandFocus(size_t index, const std::string& note) {
+    if (focus_[index].running) {
+        const int id = focus_[index].id;
+        finishFocus(index, true);
+        if (index >= focus_.size() || focus_[index].id != id) return;   // 접속한 사람이 없어 이미 없어졌다
+    }
+    for (const FocusMember& m : focus_[index].members) {
+        ConnId who = 0;
+        if (Player* online = onlinePlayer(m.account, &who)) {
+            online->focusing = false;
+            server_.send(who, systemMessage(note));
+            server_.send(who, "{\"t\":\"focus\",\"id\":0}");
+        }
+    }
+    focus_.erase(focus_.begin() + static_cast<long>(index));
 }
 
 // 타이머가 끝났거나(cut 아님) 방장이 일찍 끝냈다(cut). 함께한 시간을 기록에 더하고, 모임은 남겨 다음 판을 바로 할 수 있게 한다.
@@ -204,6 +225,16 @@ void Game::focusCommand(ConnId id, Player& p, const std::string& arg) {
             room->minutes = static_cast<int>(value);
         }
         begin();
+    } else if (action == "host") {   // "host <순서>": 모임의 그 사람(접속 중)에게 방장을 넘긴다
+        if (!hasValue || value < 1 || value >= static_cast<long>(room->members.size())) return;
+        const std::string account = room->members[static_cast<size_t>(value)].account;
+        if (!onlinePlayer(account)) {
+            server_.send(id, systemMessage("접속 중인 사람에게만 방장을 넘길 수 있어요."));
+            return;
+        }
+        std::rotate(room->members.begin(), room->members.begin() + value, room->members.begin() + value + 1);   // 그 사람을 맨 앞으로, 나머지 순서는 그대로
+        tellRoom(p.name + "님이 " + nickOf(account) + "님에게 방장을 넘겼어요.");
+        sendFocus(*room);
     } else if (action == "stop") {
         if (!room->running) return;
         finishFocus(static_cast<size_t>(room - focus_.data()), true);

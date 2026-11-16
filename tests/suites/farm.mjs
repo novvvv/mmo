@@ -34,7 +34,7 @@ async function protocol(t) {
   let f = await enter('f');
   const g = await enter('g'), shopper = await enter('shopper'), seller = await enter('seller'), keeper = await enter('keeper'), chef = await enter('chef'), out = await enter('out');
   const info = f.map.farm;
-  t.check('the map describes the farm', info?.zone === FARM && info.plots.length === 24 && info.seed.length === 8 && info.sell.length === 30 && f.map.zones.length === 9, JSON.stringify(info));
+  t.check('the map describes the farm', info?.zone === FARM && info.plots.length === 24 && info.seed.length === 8 && info.sell.length === 30 && f.map.zones.length === 10, JSON.stringify(info));
   t.check('the village has a farm gate', f.map.buildings.some((b) => b.k === 'farm' && b.name === '농장' && b.room === FARM));
   t.check('entering the farm shows empty plots and my storehouse', plot(f, 0)?.[0] === -1 && have(f, SEED + CARROT) === 2 && have(g, SEED + CARROT) === 0);
 

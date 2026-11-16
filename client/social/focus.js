@@ -136,6 +136,12 @@ function renderFocus() {
     const note = document.createElement('small');
     note.textContent = `${i === 0 ? '방장' : ''}${on ? '' : `${i === 0 ? ' · ' : ''}잠시 끊김`}`;
     li.append(dot, label, note);
+    if (host && i > 0 && on) {   // 방장은 다른 사람을 눌러 방장을 넘길 수 있다
+      const pass = friendButton('방장 넘기기', () => focusSend(`host ${i}`));
+      pass.classList.add('focus-pass');
+      pass.title = `${name}님에게 방장 넘기기`;
+      li.append(pass);
+    }
     return li;
   }) : []));
   focusMake.hidden = !!room;
@@ -143,6 +149,7 @@ function renderFocus() {
   focusInvite.hidden = !room || running || !host;
   focusStop.hidden = !running || !host;
   focusLeave.hidden = !room;
+  focusLeave.textContent = host && room.m.length > 1 ? '모임 해체하기' : '모임 나가기';
   focusOpenRooms.hidden = !!room;
   if (!room) {
     focusRoomsEl.replaceChildren(...(focusRooms.length ? focusRooms.map(([id, name, min, count, run, left]) => {
@@ -193,7 +200,8 @@ function tickFocus() {
   }
   if (!focusRoom && !focusEl.hidden && performance.now() - focusListAt > 5000) requestFocusList();
 }
-setInterval(tickFocus, 500);
+// 스크립트가 모두 실행된 뒤에 시작한다 (먼저 시작하면 아직 불러오지 않은 파일의 값을 쓰다 멈출 수 있다)
+document.addEventListener('DOMContentLoaded', () => setInterval(tickFocus, 500));
 
 function setFocusMinutes(value) {
   focusMin.value = clamp(Math.round(Number(value)) || 25, 1, FOCUS_MAX_MIN);
@@ -239,6 +247,14 @@ focusStop.addEventListener('click', () => {
 });
 focusLeave.addEventListener('click', () => {
   focusLeave.blur();
+  if (focusRoom?.host && focusRoom.m.length > 1) {   // 방장이 나가면 모임이 흩어진다
+    pushNotice({
+      kind: 'info', key: 'focus:disband', title: '모임 해체', text: '방장이 나가면 모임이 해체돼요. 해체할까요?',
+      sub: focusRoom.run ? '지금까지 집중한 시간은 모두의 기록에 남아요. 모임을 남기려면 먼저 다른 사람에게 방장을 넘겨 주세요.' : '모임을 남기려면 먼저 다른 사람에게 방장을 넘겨 주세요.',
+      quiet: true, yesLabel: '해체하기', noLabel: '취소', yes: () => focusSend('leave'),
+    });
+    return;
+  }
   focusSend('leave');
 });
 makeMovable(focusEl, document.getElementById('focus-head'), 'focus');

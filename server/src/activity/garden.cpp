@@ -1,5 +1,5 @@
 // 텃밭: 집과 마당에 놓은 텃밭 가구에 심고, 물 주고, 거둔다. 작물은 그 가구와 함께 decor.list 에 저장된다.
-#include "core/rules.hpp"
+#include "game/rules.hpp"
 
 // 지금 있는 구역의 텃밭에 자라는 것. p 는 [가구 번호, 작물, 남은 초, 걸리는 초, 심은 사람, 내 것인지, 물을 다시 줄 수 있을 때까지, 누구나 거둘 수 있는지]
 void Game::sendGarden(ConnId id, const Player& p) {

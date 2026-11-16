@@ -1,8 +1,11 @@
-// 게임 월드의 고정된 모습: 강, 구역(야외/집 내부), 건물, 가구, 앉을 자리, 나무, 가로등.
-// 같은 데이터를 입장 시 클라이언트에 보내 화면과 충돌 판정이 일치하게 한다.
+// 게임 월드의 모습과 충돌: 강, 구역(마을과 건물 안), 건물, 고정 가구, 앉을 자리, 나무, 가로등.
+// 같은 데이터를 입장할 때 클라이언트에 보내(map) 화면과 충돌 판정이 일치하게 한다.
+// core 가 기본 마을(강, 나무, 가로등, 벤치)을 만들고, 모듈이 그 위에 건물을 짓고 꾸민 뒤 publish 로 지도를 만든다.
 #pragma once
 
+#include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 // 마을. 예전(2000×2000)보다 빈 땅을 줄여 가까이 모았다. 예전 위치로 저장된 계정은 kMapVersion 으로 알아보고 옮긴다.
@@ -21,14 +24,8 @@ constexpr float kBodyMargin = 14.f;      // 건물, 가구와 캐릭터 중심 �
 
 constexpr float kChairReach = 56.f;  // 자리에 앉을 수 있는 거리
 constexpr float kDoorReach = 56.f;   // 문을 쓸 수 있는 거리
-constexpr float kFishReach = 96.f;   // 낚시할 수 있는 물가까지의 거리
-constexpr float kCatReach = 68.f;    // 고양이와 상호작용할 수 있는 거리
-constexpr float kLampReach = 56.f;   // 스탠드를 켜고 끌 수 있는 거리
-constexpr float kTvReach = 70.f;     // TV 창을 열 수 있는 거리
-constexpr float kDartReach = 80.f;   // 다트 게임을 열거나 참가할 수 있는 거리
 constexpr float kBedReach = 104.f;   // 침대에 누울 수 있는 거리
-constexpr float kShopReach = 90.f;   // 매점을 이용할 수 있는 거리
-constexpr float kExteriorReach = 150.f;  // 밖에서 집 외관을 꾸밀 수 있는 문까지의 거리
+constexpr float kRestoreSearch = 240.f;  // 접속할 때 저장한 자리가 막혀 있으면 이만큼 안에서 빈 곳을 찾는다
 
 // 동서로 흐르는 강. 둑은 샘플 지점을 직선으로 이은 선이다.
 class River {
@@ -82,17 +79,6 @@ struct Seat {
     float exitY = 0.f;
 };
 
-// 집에 원래 놓여 있던 설치형 가구. 서버를 처음 켤 때 한 번만 배치 가구로 깔고, 그 뒤로는 옮기거나 소지품에 넣을 수 있다.
-struct DecorSeed {
-    int zone;
-    std::string kind;  // home/decor.hpp 가구 목록의 이름
-    float x, y;
-    bool faced;        // 앉는 방향을 따로 정했는지 (식탁을 둘러싼 의자처럼)
-    float faceX, faceY;
-    int side;
-    int gen;           // 몇 번째로 설치형이 된 묶음인지. 이미 깐 묶음은 다시 깔지 않는다
-};
-
 struct Furniture {
     std::string kind;  // 그림 종류. 클라이언트의 FURNITURE 표에 대응한다.
     int zone;
@@ -119,41 +105,19 @@ struct Building {
     float deckX0 = 0.f, deckY0 = 0.f, deckX1 = 0.f, deckY1 = 0.f;  // 테라스 바닥 (없으면 모두 0)
 };
 
-// 방 안에서 사는 반려동물의 시작 위치. 종류와 이름은 클라이언트의 ROOM_PETS 표에 있다
-struct CatHome {
-    int zone;
-    float x;
-    float y;
-};
-
 // 여러 방이 복도로 이어진 구역의 바닥 하나. style 은 클라이언트의 ROOM_STYLES 번호다.
 struct FloorRect {
     float x0, y0, x1, y1;
     int style;
 };
 
-// 집 확장: 원래 방의 한쪽 벽을 뚫어 통로와 새 방을 붙인다. at 은 통로의 가운데(위아래로 뚫으면 x, 좌우면 y)다.
-enum ExpandDir { kExpandUp = 0, kExpandDown = 1, kExpandLeft = 2, kExpandRight = 3 };
-struct Opening {
-    int dir;
-    float at;
-    float half = 60.f;  // 통로의 반폭. 넓히는 사람이 정한다
-    float len = 0.f;    // 붙인 방의 크기: 뚫은 벽과 나란한 쪽. 0 이면 원래 방에 맞춘 기본 크기
-    float deep = 0.f;   // 붙인 방의 크기: 벽에서 멀어지는 쪽. 0 이면 기본 크기
-};
-constexpr float kRoomMinLen = 200.f, kRoomMaxLen = 900.f;    // 붙인 방을 줄이고 늘릴 수 있는 범위
-constexpr float kRoomMinDeep = 200.f, kRoomMaxDeep = 700.f;
+// 집 확장: 원래 방(base) 바깥에 kExpandCell 크기의 칸을 칠해 바닥을 넓힌다. 칸 (cx, cy) 는 x cx*칸 ~ (cx+1)*칸 이다.
+using Cell = std::pair<int, int>;
+constexpr float kExpandCell = 20.f;        // 넓히는 칸 한 변
+constexpr float kExpandReach = 800.f;      // 원래 방에서 이만큼까지 넓힐 수 있다
+constexpr int kExpandMaxCells = 10000;     // 한 집에 칠할 수 있는 칸 수 (20px 칸이라 400만 px², 넓힐 수 있는 범위를 거의 다 채운다)
+constexpr int kExpandMaxRects = 160;       // 바닥 모양이 너무 잘게 나뉘지 않게 (그리기와 충돌 계산이 무거워진다)
 constexpr float kWallHeight = 124.f;       // 방 뒤쪽 벽의 높이. 클라이언트의 WALL_HEIGHT 와 같다
-constexpr float kOpeningHalf = 60.f;       // 폭을 정하지 않고 뚫을 때의 통로 반폭
-constexpr float kOpeningMinHalf = 40.f;    // 가장 좁게 뚫을 수 있는 반폭
-constexpr float kOpeningMargin = 20.f;     // 벽을 다 트지 않을 때 통로가 방 모서리에서 떨어져야 하는 거리
-constexpr float kSideCorridor = 60.f;      // 좌우로 뚫은 통로의 길이 (두 방의 옆벽 두께)
-constexpr float kFrontCorridor = 160.f;    // 위아래로 뚫은 통로의 길이 (뒷벽 높이보다 길어야 벽이 바닥을 덮지 않는다)
-constexpr float kExpandSideW = 360.f;      // 좌우로 붙이는 방의 폭
-constexpr float kExpandDepth = 300.f;      // 위아래로 붙이는 방의 깊이
-constexpr float kExpandMaxW = 560.f;       // 위아래로 붙이는 방의 최대 폭
-constexpr float kExpandMaxH = 440.f;       // 좌우로 붙이는 방의 최대 높이
-constexpr float kOpeningEdge = 80.f;       // 통로 가운데가 방 모서리에서 떨어져야 하는 거리
 
 // 구역 0은 야외, 1번부터는 집 내부다.
 struct Zone {
@@ -171,7 +135,7 @@ struct Zone {
     std::vector<FloorRect> base = {};
     float baseW = 0.f, baseH = 0.f;
     bool single = false;
-    std::vector<Opening> openings = {};
+    std::vector<Cell> cells = {};   // 칠한 칸 (정렬됨)
 };
 
 class World {
@@ -182,51 +146,33 @@ public:
     int zoneCount() const { return static_cast<int>(zones_.size()); }
     const Zone& zone(int index) const { return zones_[static_cast<size_t>(index)]; }
     const std::vector<Seat>& seats() const { return seats_; }
-    int pianoSeat() const { return pianoSeat_; }  // 피아노 의자의 자리 번호
-    const std::vector<CatHome>& roomCats() const { return roomCats_; }
     const std::vector<Building>& buildings() const { return buildings_; }
     const std::string& mapJson() const { return mapJson_; }
     // 구역에 놓인 해당 종류의 첫 가구. 없으면 nullptr.
     const Furniture* findFurniture(int zone, const std::string& kind) const;
     // (x, y) 가 놓인 바닥. 방이 하나뿐인 구역이면 nullptr.
     const FloorRect* floorAt(int zone, float x, float y) const;
-    // 켜고 끌 수 있는 조명이 손 닿는 곳에 있는지
-    bool lampNear(int zone, float x, float y) const;
-    bool hasTv(int zone) const;
-    static bool isCinemaScreen(const std::string& kind) { return kind == "cinema_screen" || kind == "cinema_screen_big"; }
-    int jazzZone() const { return jazzZone_; }
-    int casinoZone() const { return casinoZone_; }
-    int farmZone() const { return farmZone_; }
-    // 농장의 밭 칸 가운데 (칸 번호 순서)
-    const std::vector<Spot>& farmPlots() const { return farmPlots_; }
-    // 카지노 빠칭코 기계 앞 의자의 자리 번호
-    const std::vector<int>& pachinkoSeats() const { return pachinkoSeats_; }
-    // 집(구역 1~3)의 문이 (x, y) 에서 손 닿는 곳에 있으면 그 집 구역, 아니면 -1
-    int houseDoorNear(float x, float y, float reach) const;
-    const std::vector<DecorSeed>& decorSeeds() const { return seeds_; }
     const std::vector<Furniture>& furniture() const { return furniture_; }
 
     // ---- 집 확장
     bool expandable(int zone) const { return zone > 0 && zone < zoneCount() && !zones_[static_cast<size_t>(zone)].base.empty(); }
-    // 원래 방들 중 그 방향 맨 끝의 방. 그 방의 벽을 뚫는다
-    const FloorRect& edgeRoom(int zone, int dir) const;
-    static const FloorRect& edgeOf(const std::vector<FloorRect>& base, int dir);
-    // 그 방향으로 at 에 뚫었을 때의 통로와 새 방
-    static void expansionRects(const FloorRect& edge, int dir, float at, float half, FloorRect& corridor, FloorRect& room, float len = 0.f, float deep = 0.f);
-    // 그 방향 벽에 낼 수 있는 가장 넓은 통로의 반폭 (벽 전체, 또는 붙는 방의 폭까지)
-    static float maxOpeningHalf(const FloorRect& edge, int dir);
-    // 뚫은 곳을 바꾸고 바닥, 벽, 충돌 영역을 다시 만든다
-    // publish 가 false 면 맵 메시지를 다시 만들지 않는다 (뚫어 보고 되돌릴 때)
-    void setOpenings(int zone, std::vector<Opening> openings, bool publish = true);
+    // 칸을 칠할 수 없는 이유 (원래 방과 걸침, 넓힐 수 있는 범위 밖, 문 앞). 칠할 수 있으면 nullptr
+    const char* cellProblem(int zone, Cell cell) const;
+    // 원래 방 안에 다 들어가는 칸인지
+    bool baseCell(int zone, Cell cell) const;
+    // 칠한 칸을 바꾸고 바닥, 벽, 충돌 영역을 다시 만든다. publish 가 false 면 지도를 다시 만들지 않는다
+    void setCells(int zone, std::vector<Cell> cells, bool publish = true);
+    // 칸들을 겹치지 않는 사각형으로 묶는다 (같은 줄의 이어진 칸 → 아래로 같은 폭이면 합침)
+    static std::vector<FloorRect> mergeCells(const std::vector<Cell>& cells, int style);
     // 문에서 (x, y) 까지 걸어갈 수 있는지
     bool canReach(int zone, float x, float y) const;
     // 고정 가구(벽 제외)와 놓은 가구의 충돌 영역을 따로 본다
     bool overlapsFixed(int zone, float x0, float y0, float x1, float y1) const;
     bool overlapsDecor(int zone, float x0, float y0, float x1, float y1) const;
-    // floor 의 뒷벽 중 [x0, x1] 이 다른 바닥으로 뚫려 있는지 (벽걸이를 걸 수 없는 곳)
+    // floor 의 뒷벽 중 [x0, x1] 이 다른 바닥에 가려지는지 (벽 높이 안에 다른 바닥이 있으면 벽걸이를 걸 수 없다)
     bool wallCut(int zone, const FloorRect& floor, float x0, float x1) const;
-    // 뚫은 벽 자리에 걸린 고정 장식인지 (벽을 뚫으면 숨긴다)
-    static bool coversOpening(const Furniture& f, const FloorRect& edge, int dir, float at, float half);
+    // 사각형 전체가 바닥 위인지 (여러 바닥에 걸쳐도 된다)
+    bool floorCovers(int zone, float x0, float y0, float x1, float y1) const;
     // 한 구역의 모습, 고정 충돌 영역과 고정 가구. 집을 넓히면 모두에게 보낸다
     std::string zoneJson(int zone) const;
 
@@ -247,33 +193,36 @@ public:
     bool blocked(int zone, float x, float y) const;
     // 저장된 위치에 다시 세워도 되는 곳인지
     bool standable(int zone, float x, float y) const;
+    // (x, y) 에서 가장 가까운, maxDist 안의 설 수 있는 곳. 없으면 false
+    bool nearestStandable(int zone, float x, float y, float maxDist, float& outX, float& outY) const;
 
-private:
-    void buildOverworld();
-    void buildCafe();
+    // ---- 짓기: 모듈이 서버를 켤 때(install) 쓴다. 다 지으면 core 가 publish 로 지도를 만든다
+    // 구역 번호와 자리 번호는 만든 순서대로 붙고 저장 파일이 쓰므로, 한 번 정한 짓는 순서는 바꾸지 않는다.
     int addHouse(const std::string& name, int style, float x, float y, float roomW, float roomH);
     // 문으로 들어가는 건물과 그 안쪽 구역을 만든다. style 은 외형, roomStyle 은 내부의 꾸밈 번호다.
     int addPlace(const char* kind, const std::string& name, int style, float x, float y, float halfW, float back, float front,
                  float roomW, float roomH, int roomStyle);
     // 다른 건물 안(outside 구역)의 (doorX, doorY) 에 문이 난 방을 만든다. 마을에는 건물이 서지 않는다.
     int addAnnex(const char* kind, const std::string& name, int outside, float doorX, float doorY, float roomW, float roomH, int roomStyle);
-    void furnishTheater(int zone);
-    void furnishScreeningRoom(int zone);
-    void furnishCasino(int zone);
-    void furnishJazzBar(int zone);
-    void furnishFarm(int zone);
-    void furnishBrickHouse(int zone, float w, float h);
-    void furnishCabin(int zone, float w, float h);
-    void furnishLoftHouse(int zone);
+    // 한 구역을 여러 방(floors)으로 나누고, 바닥이 아닌 곳을 벽으로 막는다
     void carveRooms(int zone, std::vector<FloorRect> floors, float doorX, float doorY);
+    // 집 확장(벽을 뚫어 방 붙이기)을 할 수 있는 구역으로 표시한다
     void markExpandable(int zone);
-    void appendZone(std::string& json, const Zone& z) const;
-
+    // 고정 가구 하나. halfW 가 0 보다 크면 x±halfW, y-depth ~ y 를 막는다
     void put(int zone, const char* kind, float x, float y, float halfW = 0.f, float depth = 0.f);
-    void seed(int zone, const char* kind, float x, float y, int gen = 1);
-    void seedFacing(int zone, const char* kind, float x, float y, float faceX, float faceY, int side);
     void addSeat(int zone, float x, float y, float faceX = 0.f, float faceY = 1.f, int side = 0);
-    void addCafeTable(float x, float y);
+    void addFurniture(const Furniture& furniture);
+    void addSolid(const Solid& solid);
+    void addBuilding(const Building& building);
+    Zone& zoneRef(int index) { return zones_[static_cast<size_t>(index)]; }
+    // 지도(map 메시지) 끝에 모듈의 필드를 덧붙이는 함수
+    void setExtraJson(std::function<void(std::string&)> extra) { extraJson_ = std::move(extra); }
+    // 지금 모습으로 지도를 다시 만든다
+    void publish();
+
+private:
+    void buildOverworld();
+    void appendZone(std::string& json, const Zone& z) const;
     std::string buildJson() const;
 
     River river_;
@@ -282,20 +231,14 @@ private:
     std::vector<Furniture> furniture_;
     std::vector<Solid> solids_;
     std::vector<Seat> seats_;
+    size_t staticSeats_ = 0;   // 짓기로 만든 고정 자리 수. 그 뒤의 자리는 놓은 가구의 것(addDynamicSeat)이다
     std::vector<Spot> trees_;
     std::vector<Spot> lamps_;
-    int pianoSeat_ = -1;
-    int jazzZone_ = -1;
-    int casinoZone_ = -1;
-    int farmZone_ = -1;
-    std::vector<Spot> farmPlots_;
-    std::vector<int> pachinkoSeats_;
-    std::vector<DecorSeed> seeds_;
     struct DecorSolid {
         int id;
         Solid solid;
     };
     std::vector<DecorSolid> decorSolids_;
-    std::vector<CatHome> roomCats_;
     std::string mapJson_;
+    std::function<void(std::string&)> extraJson_;
 };

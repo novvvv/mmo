@@ -1,5 +1,5 @@
 // 요리: 조리대 앞에서 재료를 확인하고 시작을 허락한다. 손놀림 놀이는 화면에서 돌고 점수만 받는다.
-#include "core/rules.hpp"
+#include "game/rules.hpp"
 
 // 조리대: 농장의 바깥 조리대나, 집에 놓은 주방 가구 앞
 bool Game::atKitchen(const Player& p) const {

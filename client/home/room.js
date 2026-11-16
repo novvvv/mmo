@@ -382,6 +382,22 @@ jazzForm.addEventListener('submit', async (e) => {
 });
 jazzUrl.addEventListener('focus', () => stopMoving());
 jazzClose.addEventListener('click', () => setJazzPanel(false));
+
+// 레코드판 창 접기: 제목 줄만 남긴다. 이 브라우저에 기억한다
+const jazzMini = document.getElementById('jazz-mini');
+function setJazzMini(mini) {
+  jazzEl.classList.toggle('mini', mini);
+  jazzMini.textContent = mini ? '▢' : '–';
+  jazzMini.title = mini ? '펴기' : '접기';
+  jazzMini.setAttribute('aria-expanded', String(!mini));
+  jazzMini.setAttribute('aria-label', mini ? '레코드판 펴기' : '레코드판 접기');
+  try { localStorage.setItem('mmo.jazzMini', mini ? '1' : '0'); } catch { /* 이번 접속에만 적용 */ }
+}
+jazzMini.addEventListener('click', () => {
+  setJazzMini(!jazzEl.classList.contains('mini'));
+  releaseFocus(jazzMini);
+});
+try { if (localStorage.getItem('mmo.jazzMini') === '1') setJazzMini(true); } catch { /* 기본은 펼친 상태 */ }
 // 레코드판 소리 크기와 음소거도 내 화면에만. 정지 단추와 달리 방의 다른 사람에게는 계속 나온다. 이 브라우저에 남긴다.
 const JAZZ_VOLUME_KEY = 'mmo.jazzVolume';
 const JAZZ_MUTE_KEY = 'mmo.jazzMuted';

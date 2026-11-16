@@ -1,5 +1,5 @@
 // 다트 (재즈바와 다트판을 놓은 집): 대기실, 차례, 조준선, 점수. 점수 계산은 darts.hpp.
-#include "core/rules.hpp"
+#include "game/rules.hpp"
 
 bool Game::hasDarts(int zone) const {
     return world_.findFurniture(zone, "dart_line") || hasDecorKind(zone, "dart_stand");

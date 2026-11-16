@@ -1,30 +1,5 @@
-// 채팅과 감정표현, 머리 위 광고판.
-#include "core/rules.hpp"
-
-void Game::chat(ConnId id, Player& p, const std::string& raw) {
-    const std::string message = text::sanitize(raw, kMaxChatChars);
-    if (message.empty()) return;
-    if (p.chatTokens < 1.f) {
-        server_.send(id, systemMessage(kTooFastMessage));
-        return;
-    }
-    p.chatTokens -= 1.f;
-    int emote = 0;
-    for (const char* name : kEmotes) {
-        if (message == name) {  // 감정표현은 표정이 보이는 같은 구역에만 알린다
-            if (decor::emotePaid(emote) && !(p.emotes & (1 << emote))) {
-                server_.send(id, systemMessage("상점의 감정표현 탭에서 구할 수 있는 표정이에요."));
-                return;
-            }
-            sendToZone(p.zone, "{\"t\":\"emote\",\"id\":" + std::to_string(id) + ",\"n\":\"" + text::jsonEscape(p.name) +
-                                   "\",\"e\":" + std::to_string(emote) + "}");
-            return;
-        }
-        ++emote;
-    }
-    sendToAll("{\"t\":\"chat\",\"id\":" + std::to_string(id) + ",\"n\":\"" + text::jsonEscape(p.name) +
-              "\",\"c\":\"" + rgbToHex(p.rgb) + "\",\"m\":\"" + text::jsonEscape(message) + "\"}");
-}
+// 머리 위 광고판. 채팅은 core 가, 감정표현은 game.cpp 의 onChat 이 맡는다.
+#include "game/rules.hpp"
 
 // "<0 또는 1> <문구>": 머리 위 광고판을 끄거나 켠다. 문구는 꺼 둘 때도 저장해 다시 켤 때 쓴다.
 void Game::setBoard(ConnId id, Player& p, const std::string& arg) {

@@ -1,6 +1,6 @@
 // run.mjs 가 Node 의 crypto 결과와 비교하는 데 쓰는 작은 프로그램.
 // 사용법: crypto_check <password hex> <salt hex> <iterations>
-#include "../server/src/base/crypto.hpp"
+#include "../server-core/src/base/crypto.hpp"
 
 #include <cstdlib>
 #include <iostream>

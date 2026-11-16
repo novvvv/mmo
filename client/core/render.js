@@ -502,9 +502,9 @@ function drawCatEffects(c, now, showName) {
     ctx.textBaseline = 'bottom';
     ctx.lineWidth = 3;
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
-    ctx.strokeText(c.coat.name, c.x, top - 44);
+    ctx.strokeText(c.name || c.coat.name, c.x, top - 44);
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(c.coat.name, c.x, top - 44);
+    ctx.fillText(c.name || c.coat.name, c.x, top - 44);
   }
 }
 
@@ -626,8 +626,16 @@ function buildScene(list, camX, camY, vw, vh, now, night) {
   }
   if (CHRISTMAS) for (const d of XMAS_DECOR) if (decorHere(d) && visible(d.x, d.y, 280)) scene.push({ y: d.y, draw: () => drawDecor(d, now) });
   farmScene(scene, now);
-  for (const c of cats) scene.push({ y: c.y, draw: () => (c.coat.dog ? drawDog : drawCat)(c, now) });
-  for (const f of petFollowers.values()) if (visible(f.x, f.y, 80)) scene.push({ y: f.y, draw: () => (f.coat.dog ? drawDog : drawCat)(f, now) });
+  catPerchBusy.clear();
+  for (const a of [...cats, ...petFollowers.values()]) {
+    const item = perchOf(a);
+    if (item) {   // 고양이 가구 위
+      catPerchBusy.add(item.id);
+      scene.push({ y: perchedSceneY(item), draw: () => drawPerched(a, item, now) });
+    } else if (a.coat && (cats.includes(a) || visible(a.x, a.y, 80))) {
+      scene.push({ y: a.y, draw: () => (a.coat.dog ? drawDog : drawCat)(a, now) });
+    }
+  }
   for (const d of drops) if (visible(d.x, d.y, 40)) scene.push({ y: d.y - 1, draw: () => drawDrop(d, now) });
   scene.sort((a, b) => a.y - b.y);
   return scene;
@@ -673,6 +681,7 @@ function render() {
   const self = list.find((e) => e.id === myId);
   if (self) {
     for (const c of cats) drawCatEffects(c, now, Math.hypot(c.x - self.x, c.y - self.y) < 150);
+    for (const f of petFollowers.values()) if (f.name && f.coat) drawCatEffects(f, now, Math.hypot(f.x - self.x, f.y - self.y) < 150);   // 이름을 지어 준 펫은 곁에 가면 이름이 보인다
   }
   if (self && terrain && !touchMode) drawActionHint(self);  // 터치 화면에서는 오른쪽 아래 버튼이 안내를 대신한다
   ctx.restore();
@@ -734,4 +743,5 @@ function frame(now) {
   if (!charEl.hidden) drawCharacterPreview(now);
   requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);
+// 스크립트가 모두 실행된 뒤에 시작한다 (먼저 시작하면 아직 불러오지 않은 파일의 값을 쓰다 멈출 수 있다)
+document.addEventListener('DOMContentLoaded', () => requestAnimationFrame(frame));

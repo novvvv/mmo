@@ -21,7 +21,7 @@ async function shop(t) {
   };
   const out = await enter('out');
   const map = out.map;
-  t.check('the kingdom and the slime colony are gone', !map.buildings.some((b) => b.k === 'portal' || b.k === 'gate') && !map.npcs && map.zones.length === 9, map.zones.length);
+  t.check('the kingdom and the slime colony are gone', !map.buildings.some((b) => b.k === 'portal' || b.k === 'gate') && !map.npcs && map.zones.length === 10, map.zones.length);
   t.check('the catalog has many kinds of furniture', map.catalog.length >= 30, map.catalog.length);
   const buyer = await enter('buyer'), poor = await enter('poor'), far = await enter('far');
   await wait(100);

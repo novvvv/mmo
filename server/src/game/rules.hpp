@@ -1,11 +1,12 @@
-// Game 의 구현 파일(.cpp)들이 함께 쓰는 규칙 값과 작은 도우미.
+// 이 게임(콘텐츠 모듈 Game)의 구현 파일(.cpp)들이 함께 쓰는 규칙 값과 작은 도우미.
 // 기능별 파일은 모두 이 헤더 하나를 포함한다. 값을 바꾸면 그 기능의 화면(client/)과 문서도 함께 본다.
+// core 의 값(걷는 빠르기, 채팅 제한, 로그인 제한)과 도우미(clampInt, parseWhole, splitList, joinList, splitTabs)는 core/rules.hpp 에 있다.
 #pragma once
 
-#include "core/game.hpp"
-#include "base/crypto.hpp"
+#include "core/rules.hpp"
+#include "game/game.hpp"
 #include "activity/darts.hpp"
-#include "base/text.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <cctype>
@@ -19,12 +20,7 @@
 #include <map>
 #include <sstream>
 
-constexpr float kSpeed = 220.f;  // px/s
-constexpr size_t kMaxChatChars = 200;
-constexpr float kChatBurst = 5.f;         // 연속으로 보낼 수 있는 메시지 수
-constexpr float kChatRefillPerSec = 1.f;  // 초당 회복되는 메시지 수
 constexpr size_t kMaxBoardChars = 30;     // 머리 위 광고판 문구의 최대 글자 수
-const char* const kTooFastMessage = "메시지를 너무 빠르게 보내고 있습니다. 잠시 후 다시 시도해 주세요.";
 
 constexpr float kBiteMinSec = 2.5f;     // 던진 뒤 입질까지 걸리는 시간
 constexpr float kBiteMaxSec = 7.f;
@@ -37,23 +33,13 @@ constexpr float kCatBankMax = 150.f;
 constexpr float kCatRestMinSec = 2.f;    // 멈춰서 쉬는 시간
 constexpr float kCatRestMaxSec = 7.f;
 constexpr float kCatWalkMaxSec = 12.f;   // 둑에 막혀 목적지에 못 가면 이 시간 뒤에 포기
+constexpr float kCatPerchFront = 20.f;   // 고양이 가구를 쓰는 고양이가 서 있는 곳: 가구 기준점에서 이만큼 앞 (가구와 몸 사이 거리 kBodyMargin 보다 멀어야 설 수 있다)
 constexpr int kCatBroadcastTicks = 5;    // 위치 전송 주기 (틱). 천천히 움직이므로 자주 보낼 필요가 없다
 constexpr float kCatCooldownSec = 0.6f;  // 플레이어별 상호작용 간격
 constexpr float kCatPetRestSec = 4.f;    // 쓰다듬으면 이만큼 제자리에 있는다
 constexpr float kCatFollowSec = 25.f;    // 먹이를 주면 따라다니는 시간
 constexpr float kCatFollowSpeed = 150.f;
 constexpr float kCatFollowGap = 44.f;    // 따라갈 때 플레이어와 유지하는 거리
-
-constexpr size_t kMinPasswordBytes = 4;
-constexpr size_t kMaxPasswordBytes = 128;
-constexpr int kMaxAuthInFlight = 16;      // 동시에 처리하는 로그인 수. 넘치면 거절해 CPU를 지킨다
-constexpr int kLockAfterFailures = 5;     // 같은 IP에서 이 횟수만큼 연속으로 틀리면 잠시 잠근다
-constexpr double kLockSec = 30.0;
-constexpr size_t kMaxLoginLocks = 4096;
-constexpr int kCloseAfterFailures = 10;   // 한 연결에서 이만큼 틀리면 연결을 끊는다
-constexpr size_t kMaxAccounts = 50000;    // 무한 가입으로 디스크가 차지 않게 하는 상한
-constexpr double kSignupWindowSec = 3600.0;
-constexpr size_t kMaxSignupWindows = 4096;
 
 constexpr int kLightLevelMin = 10;  // 밝기 슬라이더의 범위(%). 완전히 끄는 것은 스위치가 맡는다
 constexpr int kLightLevelMax = 100;
@@ -122,6 +108,7 @@ constexpr float kOmokReach = 90.f;        // 오목판에 앉을 수 있는 거�
 constexpr double kOmokMoveSeconds = 120.0; // 한 수에 쓸 수 있는 시간. 넘기면 진다
 constexpr int kOmokSize = 15;
 constexpr int kMaxPetsPerHouse = 8;      // 한 집에 풀어놓을 수 있는 펫
+constexpr size_t kMaxPetNameChars = 8;   // 펫에게 지어 주는 이름의 최대 글자 수
 constexpr size_t kMaxMates = 10;         // 동거인 수
 constexpr size_t kMaxWatchers = 30;      // 한 판을 관전할 수 있는 사람
 constexpr size_t kMaxFocusMembers = 8;   // 집중 모임 한 곳의 사람 수
@@ -146,9 +133,6 @@ constexpr int kPachiJackpotPay = 60, kPachiSevenPay = 150;
 constexpr double kPachiReachChance = 0.3;     // 꽝일 때 앞의 두 숫자가 같아 두근거리는 판
 constexpr float kPachiBurst = 6.f;            // 연사로 쏠 수 있는 구슬
 constexpr float kPachiRefillPerSec = 3.5f;
-
-// 이어 들어오기: 로그인하면 이 표를 함께 준다. 연결이 끊기거나 서버가 다시 켜져도 비밀번호 없이 같은 계정으로 돌아온다.
-constexpr long kResumeSec = 30L * 24 * 3600;
 
 // 집 외관: 벽 색, 지붕 색, 문, 장식(비트)
 constexpr int kExteriorWalls = 9, kExteriorRoofs = 9, kExteriorDoors = 8, kExteriorDecoBits = 6, kExteriorForms = 9;
@@ -189,32 +173,6 @@ constexpr double kMinJazzPlaySeconds = 2.0;  // 이보다 빨리 온 "곡이 끝
 constexpr float kDropTtlSec = 45.f;
 constexpr float kPickupReach = 42.f;
 
-constexpr float kAutosaveSec = 20.f;
-constexpr float kTimeSyncSec = 30.f;
-
-enum InputBits : uint8_t { kUp = 1, kDown = 2, kLeft = 4, kRight = 8 };
-
-inline int clampInt(long value, int lo, int hi) { return static_cast<int>(std::clamp<long>(value, lo, hi)); }
-
-// "#rrggbb" 또는 예전 클라이언트가 보내는 색상(0~359). 형식이 틀리면 -1.
-inline int parseBodyColor(const std::string& text) {
-    if (text.size() == 7 && text[0] == '#') {
-        if (!std::all_of(text.begin() + 1, text.end(), [](unsigned char c) { return std::isxdigit(c); })) return -1;
-        return static_cast<int>(std::strtol(text.c_str() + 1, nullptr, 16));
-    }
-    char* end = nullptr;
-    const long hue = std::strtol(text.c_str(), &end, 10);
-    if (end == text.c_str() || *end != '\0') return -1;
-    return hueToRgb(clampInt(hue, 0, 359));
-}
-
-// 문자열 전체가 정수일 때만 true.
-inline bool parseWhole(const char* digits, long& value) {
-    char* end = nullptr;
-    value = std::strtol(digits, &end, 10);
-    return end != digits && *end == '\0';
-}
-
 // 염색 값 "rrggbb-명도-채도": 색은 소문자 16진수 6자리, 명도는 50~150, 채도는 0~200 (%).
 inline bool validTint(const std::string& tint) {
     if (tint.size() < 10 || tint.size() > 14 || tint[6] != '-') return false;
@@ -248,23 +206,6 @@ inline std::vector<std::pair<int, std::string>> parseDyed(const std::string& tex
 inline std::string formatDyed(const std::vector<std::pair<int, std::string>>& dyed) {
     std::string out;
     for (const auto& item : dyed) out += (out.empty() ? "" : ",") + std::to_string(item.first) + ":" + item.second;
-    return out;
-}
-
-// 계정 파일의 "<아이디>,<아이디>" 목록
-inline std::vector<std::string> splitList(const std::string& csv) {
-    std::vector<std::string> out;
-    std::istringstream in(csv);
-    std::string item;
-    while (std::getline(in, item, ',')) {
-        if (!item.empty()) out.push_back(item);
-    }
-    return out;
-}
-
-inline std::string joinList(const std::vector<std::string>& list) {
-    std::string out;
-    for (const std::string& item : list) out += (out.empty() ? "" : ",") + item;
     return out;
 }
 
@@ -302,17 +243,6 @@ inline std::string formatTodo(const std::vector<TodoItem>& todo) {
         out += (out.empty() ? "" : "\t") + std::string(item.done ? "1" : "0") + date + "\x1e" + item.text;
     }
     return out;
-}
-
-inline std::vector<std::string> splitTabs(const std::string& line) {
-    std::vector<std::string> fields;
-    size_t start = 0;
-    while (true) {
-        const size_t tab = line.find('\t', start);
-        fields.push_back(line.substr(start, tab == std::string::npos ? std::string::npos : tab - start));
-        if (tab == std::string::npos) return fields;
-        start = tab + 1;
-    }
 }
 
 // 한 가지를 가질 수 있는 개수. 농장의 물건은 곳간의 한도를 따른다

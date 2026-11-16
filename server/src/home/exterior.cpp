@@ -1,5 +1,5 @@
 // 집 외관: 모양, 벽, 지붕, 문, 장식. 마을의 모두에게 보인다.
-#include "core/rules.hpp"
+#include "game/rules.hpp"
 
 std::string Game::exteriorsJson() const {
     std::string json = "{\"t\":\"ext\",\"p\":[";
@@ -49,7 +49,7 @@ void Game::exteriorCommand(ConnId id, Player& p, const std::string& arg) {
     if (!(in >> form)) form = exteriors_[static_cast<size_t>(zone)].form;   // 모양을 보내지 않는 예전 화면은 그대로 둔다
     if (form < 0 || form >= kExteriorForms) return;
     if (wall < 0 || wall >= kExteriorWalls || roof < 0 || roof >= kExteriorRoofs || door < 0 || door >= kExteriorDoors || deco < 0 || deco >= (1 << kExteriorDecoBits)) return;
-    const bool here = p.zone == zone || (p.zone == 0 && world_.houseDoorNear(p.x, p.y, kExteriorReach) == zone);
+    const bool here = p.zone == zone || (p.zone == 0 && town_.houseDoorNear(p.x, p.y, kExteriorReach) == zone);
     if (!here) {
         server_.send(id, systemMessage("그 집 안이나 문 앞에서만 외관을 꾸밀 수 있습니다."));
         return;

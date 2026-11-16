@@ -1,11 +1,12 @@
 // 로그인과 입장: 가입·로그인(비밀번호 해시는 작업 스레드), 이어 들어오기 표, 캐릭터를 정하고 입장, 계정에 저장, 퇴장.
+// 입장과 퇴장 사이사이에서 모듈을 부른다 (module.hpp 의 JoinStep, LeaveStep).
 #include "core/rules.hpp"
 
-void Game::authError(ConnId id, const std::string& message) {
+void Core::authError(ConnId id, const std::string& message) {
     server_.send(id, "{\"t\":\"auth\",\"ok\":false,\"m\":\"" + text::jsonEscape(message) + "\"}");
 }
 
-bool Game::allowSignup(const std::string& ip) {
+bool Core::allowSignup(const std::string& ip) {
     if (accounts_.size() >= kMaxAccounts) return false;
     if (signups_.size() > kMaxSignupWindows) signups_.clear();
     SignupWindow& window = signups_[ip];
@@ -18,18 +19,18 @@ bool Game::allowSignup(const std::string& ip) {
     return true;
 }
 
-void Game::beginAuth(const std::string& ip) {
+void Core::beginAuth(const std::string& ip) {
     ++authInFlight_;
     ++authByIp_[ip];
 }
 
-void Game::endAuth(const std::string& ip) {
+void Core::endAuth(const std::string& ip) {
     --authInFlight_;
     const auto it = authByIp_.find(ip);
     if (it != authByIp_.end() && --it->second <= 0) authByIp_.erase(it);
 }
 
-void Game::login(ConnId id, const std::string& arg) {
+void Core::login(ConnId id, const std::string& arg) {
     Session& session = sessions_[id];
     if (!session.account.empty() || session.authPending) return;
 
@@ -95,7 +96,7 @@ void Game::login(ConnId id, const std::string& arg) {
     });
 }
 
-void Game::finishSignup(ConnId id, const std::string& ip, const std::string& username, const std::string& saltHex,
+void Core::finishSignup(ConnId id, const std::string& ip, const std::string& username, const std::string& saltHex,
                         int iterations, const std::string& hashHex) {
     endAuth(ip);
     const auto it = sessions_.find(id);
@@ -115,7 +116,7 @@ void Game::finishSignup(ConnId id, const std::string& ip, const std::string& use
     completeLogin(id, stored, true);
 }
 
-void Game::finishVerify(ConnId id, const std::string& ip, const std::string& username, bool matched) {
+void Core::finishVerify(ConnId id, const std::string& ip, const std::string& username, bool matched) {
     endAuth(ip);
     const std::string lockKey = ip + "|" + username;
     if (matched) {
@@ -145,7 +146,7 @@ void Game::finishVerify(ConnId id, const std::string& ip, const std::string& use
     completeLogin(id, *account, false);
 }
 
-void Game::completeLogin(ConnId id, Account& account, bool isNew) {
+void Core::completeLogin(ConnId id, Account& account, bool isNew) {
     // 한 계정은 한 곳에서만 접속한다. 이전 연결의 진행 상황을 먼저 저장하고 끊는다.
     const auto online = online_.find(account.id);
     if (online != online_.end() && online->second != id) {
@@ -165,7 +166,7 @@ void Game::completeLogin(ConnId id, Account& account, bool isNew) {
                          text::jsonEscape(account.id) + "\",\"nick\":\"" + text::jsonEscape(account.nick) + "\",\"rt\":\"" + token + "\"" + look);
 }
 
-void Game::logout(ConnId id) {
+void Core::logout(ConnId id) {
     const auto sessionIt = sessions_.find(id);
     if (sessionIt == sessions_.end()) return;
     const std::string accountId = sessionIt->second.account;
@@ -173,34 +174,22 @@ void Game::logout(ConnId id) {
 
     const auto playerIt = players_.find(id);
     if (playerIt != players_.end()) {
-        endTrade(id, playerIt->second, playerIt->second.name + "님이 접속을 끊어 교환이 취소되었습니다.");
-        removeFromDarts(id);
-        removeFromOmok(id);   // 두던 오목은 기권으로 지고, 그 기록까지 함께 저장한다
-        removeFromArcade(id);
-        syncAccount(playerIt->second);
-        const std::string name = playerIt->second.name;
-        const bool hadBoard = playerIt->second.boardOn;
-        const int leftZone = playerIt->second.zone;
-        std::cout << "[leave] #" << id << " " << name << " (online: " << players_.size() - 1 << ")" << std::endl;
+        for (Module* m : modules_) m->onLeave(id, *playerIt->second, LeaveStep::BeforeSave);
+        syncAccount(*playerIt->second);
+        // 월드에서 빼되, 모듈이 마지막 모습을 볼 수 있게 플레이어는 이 함수가 끝날 때까지 남겨 둔다
+        std::unique_ptr<PlayerBase> gone = std::move(playerIt->second);
         players_.erase(playerIt);
-        endShareBy(id, leftZone);
-        sendToAll(systemMessage(name + "님이 퇴장했습니다."));
-        if (hadBoard) sendToAll(boardJson(id, "", 0));
-        for (auto& entry : players_) {   // 동거인들의 목록에서 접속 표시를 끈다
-            if (std::find(entry.second.mates.begin(), entry.second.mates.end(), accountId) != entry.second.mates.end()) sendMates(entry.first, entry.second);
-        }
-        notifyFriends(accountId);
+        std::cout << "[leave] #" << id << " " << gone->name << " (online: " << players_.size() << ")" << std::endl;
+        for (Module* m : modules_) m->onLeave(id, *gone, LeaveStep::Removed);
+        sendToAll(systemMessage(gone->name + "님이 퇴장했습니다."));
+        for (Module* m : modules_) m->onLeave(id, *gone, LeaveStep::Announced);
     }
     const auto online = online_.find(accountId);
     if (online != online_.end() && online->second == id) online_.erase(online);
-    // 모으는 중이면 모임에서 빠지고, 타이머가 도는 중이면 자리를 남겨 다시 들어왔을 때 이어 간다
-    if (FocusRoom* room = focusOf(accountId)) {
-        if (room->running) sendFocus(*room);
-        else leaveFocus(accountId, nickOf(accountId));
-    }
+    for (Module* m : modules_) m->onLogout(accountId);
 }
 
-void Game::loadResumeKey() {
+void Core::loadResumeKey() {
     const std::string path = accounts_.dir() + "/resume.key";
     std::ifstream file(path);
     std::string hex;
@@ -213,12 +202,12 @@ void Game::loadResumeKey() {
 }
 
 // "<아이디 16진수>.<만료 유닉스 초>.<서명>". 서명은 반복 1번의 PBKDF2-SHA256, 곧 HMAC-SHA256(열쇠, 앞부분 + 블록 번호) 이다.
-std::string Game::resumeToken(const std::string& account, long expires) const {
+std::string Core::resumeToken(const std::string& account, long expires) const {
     const std::string body = crypto::toHex(account) + "." + std::to_string(expires);
     return body + "." + crypto::toHex(crypto::pbkdf2Sha256(resumeKey_, body, 1));
 }
 
-void Game::resume(ConnId id, const std::string& arg) {
+void Core::resume(ConnId id, const std::string& arg) {
     Session& session = sessions_[id];
     if (!session.account.empty() || session.authPending) return;
     const auto fail = [&] {
@@ -235,7 +224,7 @@ void Game::resume(ConnId id, const std::string& arg) {
     completeLogin(id, *account, false);
 }
 
-void Game::join(ConnId id, const std::string& arg) {
+void Core::join(ConnId id, const std::string& arg) {
     const auto sessionIt = sessions_.find(id);
     if (sessionIt == sessions_.end() || sessionIt->second.account.empty() || players_.count(id)) return;
     Account* account = accounts_.find(sessionIt->second.account);
@@ -251,7 +240,12 @@ void Game::join(ConnId id, const std::string& arg) {
     std::string nick;
     std::getline(in, nick);
 
-    Player p;
+    std::unique_ptr<PlayerBase> made;
+    for (Module* m : modules_) {
+        if (!made) made = m->makePlayer();
+    }
+    if (!made) made = std::make_unique<PlayerBase>();
+    PlayerBase& p = *made;
     p.account = account->id;
     p.name = text::sanitizeName(nick);
     p.rgb = rgb;
@@ -259,93 +253,35 @@ void Game::join(ConnId id, const std::string& arg) {
     p.legs = clampInt(legs, 0, 2);
     p.limbColor = clampInt(limbColor, 0, 2);
     p.chatTokens = kChatBurst;
-    p.lightTokens = kLightBurst;
-    p.noteTokens = kNoteBurst;
-    p.tvTokens = kTvBurst;
-    p.pachiTokens = kPachiBurst;
-    p.extTokens = kExteriorBurst;
-    std::copy(std::begin(account->caught), std::end(account->caught), std::begin(p.caught));
-    std::copy(std::begin(account->loot), std::end(account->loot), std::begin(p.loot));
-    std::copy(std::begin(account->shop), std::end(account->shop), std::begin(p.shop));
-    std::copy(std::begin(account->furn), std::end(account->furn), std::begin(p.furn));
-    p.dye = std::clamp(account->dye, 0, kMaxDye);
-    p.dyed = parseDyed(account->dyed);
-    p.boardStyle = clampInt(account->boardStyle, 0, 1);
-    p.pets = account->pets & ((1 << decor::kPetKinds) - 1);
-    p.emotes = account->emotes & ((1 << decor::kEmoteKinds) - 1);
-    p.floorsOwned = account->floorsOwned & ((1 << decor::kFloorKinds) - 1);
-    {
-        std::istringstream stats(account->stats);
-        std::string value;
-        for (int i = 0; i < kStatCount && std::getline(stats, value, ','); ++i) p.stats[i] = std::max(0, std::atoi(value.c_str()));
-    }
-    {
-        std::istringstream mates(account->mates);
-        std::string mate;
-        while (std::getline(mates, mate, ',') && p.mates.size() < kMaxMates) if (!mate.empty() && mate != account->id) p.mates.push_back(mate);
-    }
-    for (const std::string& other : splitList(account->friends)) {
-        if (other != account->id && p.friends.size() < kMaxFriends && std::find(p.friends.begin(), p.friends.end(), other) == p.friends.end()) p.friends.push_back(other);
-    }
-    for (const std::string& other : splitList(account->friendReq)) {
-        if (other != account->id && p.friendReq.size() < kMaxFriendRequests && std::find(p.friendReq.begin(), p.friendReq.end(), other) == p.friendReq.end()) p.friendReq.push_back(other);
-    }
-    p.todo = parseTodo(account->todo);
-    p.todoShare = account->todoShare;
-    {
-        std::istringstream goods(account->goods);
-        std::string value;
-        for (int i = 0; i < farm::kGoods && std::getline(goods, value, ','); ++i) p.goods[i] = clampInt(std::atol(value.c_str()), 0, farm::kMaxGoods);
-    }
-    p.eggAt = account->eggAt;
-    p.milkAt = account->milkAt;
-    p.pet = account->pet >= 0 && account->pet < decor::kPetKinds && (p.pets & (1 << account->pet)) ? account->pet : -1;
-    p.gold = account->gold;
-    p.actionTokens = kActionBurst;
-    p.hp = kMaxHp;
-    p.boardText = text::sanitize(account->boardText, kMaxBoardChars);
-    p.boardOn = account->boardOn && !p.boardText.empty();
+    for (Module* m : modules_) m->loadPlayer(p, *account);
     placePlayer(p, *account);
     p.dirty = true;
     const std::string name = p.name;
-    auto& placed = players_.emplace(id, std::move(p)).first->second;
+    PlayerBase& placed = *players_.emplace(id, std::move(made)).first->second;
     syncAccount(placed);
 
     std::ostringstream welcome;
-    welcome << "{\"t\":\"welcome\",\"id\":" << id << ",\"w\":" << kWorldW << ",\"h\":" << kWorldH
-            << ",\"speed\":" << kSpeed << ",\"tick\":" << kTickRate
-            << ",\"catMs\":" << (kCatBroadcastTicks * 1000 / kTickRate) << ",\"c\":[";
-    for (int i = 0; i < kFishKinds; ++i) welcome << (i ? "," : "") << placed.caught[i];
-    welcome << "],\"l\":" << lootCounts(placed) << ",\"hp\":" << placed.hp << ",\"maxHp\":" << kMaxHp
-            << ",\"pachiCost\":" << kPachiCost << ",\"f\":" << countsJson(placed.furn, kDecorKinds) << ",\"fd\":" << dyedJson(placed) << ",\"dye\":" << placed.dye << ",\"pets\":" << placed.pets << ",\"em\":" << placed.emotes << ",\"pet\":" << placed.pet << ",\"freed\":" << freedPetsJson(placed.account) << ",\"floors\":" << placed.floorsOwned << ",\"s\":" << countsJson(placed.shop, kShopKinds) << ",\"g\":" << placed.gold << "}";
-    server_.send(id, welcome.str());
+    welcome << "{\"t\":\"welcome\",\"id\":" << id << ",\"w\":" << kWorldW << ",\"h\":" << kWorldH << ",\"speed\":" << kSpeed << ",\"tick\":" << kTickRate;
+    std::string fields = welcome.str();
+    for (Module* m : modules_) m->welcomeFields(placed, fields);
+    server_.send(id, fields + "}");
     server_.send(id, world_.mapJson());
-    server_.send(id, exteriorsJson());
+    for (Module* m : modules_) m->onJoin(id, placed, JoinStep::AfterMap);
     server_.send(id, timeJson());
-    sendMates(id, placed);
-    sendFriends(id, placed);
-    sendTodo(id, placed);
-    sendGoods(id, placed);
-    if (FocusRoom* room = focusOf(placed.account)) sendFocus(*room);   // 끊겼다 돌아왔다: 돌던 타이머를 이어 본다
-    server_.send(id, guestLastJson());
-    notifyFriends(placed.account);   // 접속한 것을 친구들의 목록에 알린다
-    for (auto& entry : players_) {   // 접속한 것을 동거인들의 목록에 알린다
-        if (entry.first != id && std::find(entry.second.mates.begin(), entry.second.mates.end(), placed.account) != entry.second.mates.end()) sendMates(entry.first, entry.second);
-    }
+    for (Module* m : modules_) m->onJoin(id, placed, JoinStep::AfterTime);
 
     char zoneJson[96];
     std::snprintf(zoneJson, sizeof(zoneJson), "{\"t\":\"zone\",\"z\":%d,\"x\":%.1f,\"y\":%.1f}", placed.zone, placed.x, placed.y);
     server_.send(id, zoneJson);
-    sendRoomStateOnEntry(id, placed.zone);
-    server_.send(id, myBoardJson(placed));
-    server_.send(id, boardsJson());
+    enterRoom(id, placed.zone);
+    for (Module* m : modules_) m->onJoin(id, placed, JoinStep::AfterRoom);
 
     std::cout << "[join]  #" << id << " " << name << " (online: " << players_.size() << ")" << std::endl;
     sendToAll(systemMessage(name + "님이 입장했습니다."));
-    if (placed.boardOn) sendToAll(boardJson(id, placed.boardText, placed.boardStyle));
+    for (Module* m : modules_) m->onJoin(id, placed, JoinStep::Announced);
 }
 
-void Game::placePlayer(Player& p, const Account& account) {
+void Core::placePlayer(PlayerBase& p, const Account& account) {
     int zone = account.zone;
     float x = account.x, y = account.y;
     if (account.mapVersion < 2 && x >= 0.f) {
@@ -358,11 +294,18 @@ void Game::placePlayer(Player& p, const Account& account) {
             x = -1.f;
         }
     }
-    if (x >= 0.f && world_.standable(zone, x, y)) {
-        p.zone = zone;
-        p.x = x;
-        p.y = y;
-        return;
+    // 저장한 곳에 그새 가구가 놓였거나(침대 앞이 막힌 채 누워 있다 나간 경우 등) 바닥이 줄었으면 같은 구역의 가장 가까운 빈 곳에,
+    // 그것도 없으면 그 구역의 문 안쪽에 선다. 마을 광장으로 보내는 것은 구역 자체가 없을 때뿐이다
+    if (x >= 0.f && zone >= 0 && zone < world_.zoneCount()) {
+        float sx = 0.f, sy = 0.f;
+        const Zone& room = world_.zone(zone);
+        if (world_.nearestStandable(zone, x, y, kRestoreSearch, sx, sy) ||
+            (zone != 0 && world_.nearestStandable(zone, room.doorX, room.doorY - 40.f, kRestoreSearch, sx, sy))) {
+            p.zone = zone;
+            p.x = sx;
+            p.y = sy;
+            return;
+        }
     }
     // 시작 지점 근처의 빈 땅을 찾는다.
     p.zone = 0;
@@ -380,7 +323,7 @@ void Game::placePlayer(Player& p, const Account& account) {
     p.y = kSpawnY;
 }
 
-void Game::syncAccount(Player& p) {
+void Core::syncAccount(PlayerBase& p) {
     Account* account = accounts_.find(p.account);
     if (!account) return;
     account->nick = p.name;
@@ -388,37 +331,12 @@ void Game::syncAccount(Player& p) {
     account->arms = p.arms;
     account->legs = p.legs;
     account->limbColor = p.limbColor;
-    std::copy(std::begin(p.caught), std::end(p.caught), std::begin(account->caught));
-    std::copy(std::begin(p.loot), std::end(p.loot), std::begin(account->loot));
-    std::copy(std::begin(p.shop), std::end(p.shop), std::begin(account->shop));
-    std::copy(std::begin(p.furn), std::end(p.furn), std::begin(account->furn));
-    account->dye = p.dye;
-    account->dyed = formatDyed(p.dyed);
-    account->boardStyle = p.boardStyle;
-    account->pets = p.pets;
-    account->emotes = p.emotes;
-    account->goods.clear();
-    for (int i = 0; i < farm::kGoods; ++i) account->goods += (i ? "," : "") + std::to_string(p.goods[i]);
-    account->eggAt = p.eggAt;
-    account->milkAt = p.milkAt;
-    account->pet = p.pet;
-    account->floorsOwned = p.floorsOwned;
-    account->stats.clear();
-    for (int i = 0; i < kStatCount; ++i) account->stats += (i ? "," : "") + std::to_string(p.stats[i]);
-    account->mates.clear();
-    for (const std::string& mate : p.mates) account->mates += (account->mates.empty() ? "" : ",") + mate;
-    account->friends = joinList(p.friends);
-    account->friendReq = joinList(p.friendReq);
-    account->todo = formatTodo(p.todo);
-    account->todoShare = p.todoShare;
-    account->gold = p.gold;
-    account->boardOn = p.boardOn;
-    account->boardText = p.boardText;
+    for (Module* m : modules_) m->savePlayer(p, *account);
     account->zone = p.zone;
     account->x = p.x;
     account->y = p.y;
     account->mapVersion = kMapVersion;
-    if (p.seat >= 0 && world_.seats()[static_cast<size_t>(p.seat)].lie) {   // 침대 안은 다시 설 수 없는 곳이다
+    if (p.seat >= 0 && world_.seats()[static_cast<size_t>(p.seat)].lie) {   // 침대 안은 다시 설 수 없는 곳이다. 앞이 막혔으면 접속할 때 가까운 빈 곳을 찾는다
         account->x = world_.seats()[static_cast<size_t>(p.seat)].exitX;
         account->y = world_.seats()[static_cast<size_t>(p.seat)].exitY;
     }
@@ -426,7 +344,7 @@ void Game::syncAccount(Player& p) {
     persist(*account);
 }
 
-void Game::persist(const Account& account) {
+void Core::persist(const Account& account) {
     std::string path = accounts_.pathFor(account.id);
     std::string content = AccountStore::serialize(account);
     worker_.post([path = std::move(path), content = std::move(content)] { AccountStore::writeAtomic(path, content); });

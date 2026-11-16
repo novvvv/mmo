@@ -1,5 +1,5 @@
 // 방 안의 공용 물건: 조명과 스탠드, 피아노, TV 와 화면 공유, 레코드판. 집뿐 아니라 극장과 재즈바에서도 쓴다.
-#include "core/rules.hpp"
+#include "game/rules.hpp"
 
 // ------------------------------------------------------------ 방 조명: 방 전체의 불, 스탠드, 밝기. 같은 방의 모두에게 같게 보인다.
 
@@ -48,7 +48,7 @@ std::string Game::lightJson(int zone) const {
 }
 
 bool Game::lampNear(int zone, float x, float y) const {
-    if (world_.lampNear(zone, x, y)) return true;
+    if (town_.lampNear(zone, x, y)) return true;
     return std::any_of(decor_.begin(), decor_.end(), [=](const Decor& item) {
         const std::string kind = decor::kCatalog[item.kind].kind;
         return item.zone == zone && (kind == "floor_lamp" || kind == "lantern_lamp") && std::hypot(item.x - x, item.y - y) <= kLampReach;
@@ -59,7 +59,7 @@ bool Game::lampNear(int zone, float x, float y) const {
 
 // "<건반 번호>": 피아노 의자에 앉은 사람만 칠 수 있다. 친 사람은 이미 들었으므로 나머지 사람에게만 보낸다.
 void Game::playNote(ConnId id, Player& p, const std::string& arg) {
-    if (p.seat < 0 || p.seat != world_.pianoSeat()) return;
+    if (p.seat < 0 || p.seat != town_.pianoSeat()) return;
     long note = 0;
     if (!parseWhole(arg.c_str(), note) || note < 0 || note >= kPianoNotes) return;
     if (p.noteTokens < 1.f) return;
@@ -164,7 +164,7 @@ void Game::endShareBy(ConnId id, int zone) {
 }
 
 bool Game::roomHasTv(int zone) const {
-    if (world_.hasTv(zone)) return true;
+    if (town_.hasTv(zone)) return true;
     return std::any_of(decor_.begin(), decor_.end(), [zone](const Decor& item) {
         return item.zone == zone && (std::string(decor::kCatalog[item.kind].kind) == "tv" || std::string(decor::kCatalog[item.kind].kind) == "tv_wall");
     });
@@ -186,19 +186,19 @@ std::string Game::tvJson(int zone) const {
 
 // 재즈바는 처음부터 레코드판이 있고, 집은 레코드 플레이어 가구를 놓은 동안에만 있다.
 bool Game::hasRecord(int zone) const {
-    if (zone == world_.jazzZone()) return true;
+    if (zone == town_.jazzZone()) return true;
     return std::any_of(decor_.begin(), decor_.end(), [zone](const Decor& item) { return item.zone == zone && item.kind == decor::kRecordPlayer; });
 }
 
 // 등록한 곡은 파일에 남겨 서버를 다시 시작해도 그대로 튼다. 한 줄에 "<영상 ID>\t<제목>".
 // 재즈바는 예전부터 쓰던 jazz.list, 집은 record<구역 번호>.list 다.
 std::string Game::recordPath(int zone) const {
-    return accounts_.dir() + (zone == world_.jazzZone() ? std::string("/jazz.list") : "/record" + std::to_string(zone) + ".list");
+    return accounts_.dir() + (zone == town_.jazzZone() ? std::string("/jazz.list") : "/record" + std::to_string(zone) + ".list");
 }
 
 void Game::loadJazz() {
     for (int zone = 1; zone < world_.zoneCount(); ++zone) {
-        if (zone != world_.jazzZone() && !isHouseZone(zone)) continue;
+        if (zone != town_.jazzZone() && !isHouseZone(zone)) continue;
         std::ifstream file(recordPath(zone));
         if (!file) continue;
         JazzBar& bar = records_[zone];

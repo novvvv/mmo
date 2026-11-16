@@ -700,7 +700,8 @@ function drawJazzBar(b, ground, now, lit) {
   }
 }
 
-const HOUSE_STYLES = [drawBrickHouse, drawCabin, drawLoftHouse, drawTheater, drawCasino, drawJazzBar];
+// 6 은 농장 입구(activity/farm.js 가 채움), 7 은 헤연의 집(기와집)
+const HOUSE_STYLES = [drawBrickHouse, drawCabin, drawLoftHouse, drawTheater, drawCasino, drawJazzBar, null, drawTileHouse];
 const HOUSE_FORMS = [null, drawBrickHouse, drawCabin, drawLoftHouse, drawMushroomHouse, drawTileHouse, drawTallHouse, drawDomeHouse, drawWindmillHouse];
 
 // 건물의 겉모습: 집은 고른 모양이 있으면 그 모양으로, 없으면 원래 모양으로 그린다
@@ -708,10 +709,10 @@ function drawBuildingStyle(b, ground, now, lit, ext = NO_EXT) {
   (HOUSE_FORMS[ext.form] || HOUSE_STYLES[b.style])(b, ground, now, lit, ext);
 }
 
-// 지붕에 쌓인 눈처럼 원래 세 집의 모양에 맞춘 그림이 쓸 번호. 새 모양은 -1
+// 지붕에 쌓인 눈처럼 집 모양에 맞춘 그림이 쓸 번호 (원래 세 집 0~2, 기와집 7). 그런 그림이 없는 모양은 -1
 function houseShape(b) {
   const form = b.ext?.form || 0;
-  return !form ? b.style : form <= 3 ? form - 1 : -1;
+  return !form ? b.style : form <= 3 ? form - 1 : form === 5 ? 7 : -1;
 }
 
 // 잠시 ctx 를 다른 캔버스로 바꿔 가구 그림 함수를 그대로 쓴다.

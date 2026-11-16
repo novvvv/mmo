@@ -1,8 +1,8 @@
 // 카지노 빠칭코: 구슬이 떨어지는 곳과 숫자판은 서버가 정하고, 화면은 그 결과에 맞는 길로 구슬을 굴린다.
-#include "core/rules.hpp"
+#include "game/rules.hpp"
 
 bool Game::atPachinko(const Player& p) const {
-    const auto& seats = world_.pachinkoSeats();
+    const auto& seats = town_.pachinkoSeats();
     return p.seat >= 0 && std::find(seats.begin(), seats.end(), p.seat) != seats.end();
 }
 

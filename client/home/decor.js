@@ -49,6 +49,7 @@ let decorDyedIndex = -1; // 고른 것이 염색한 가구면 소지품의 칸 �
 let decorTaking = false;
 let decorMoving = false;  // 옮기기 모드
 let decorTurning = false; // 돌리기 모드
+let decorPainting = false; // 놓인 가구 염색 모드 (소지품에서 고른 가구가 없을 때 「염색」)
 let moveItem = null;      // 옮기려고 집어 든 가구
 let decorSizing = false;  // 크기 모드
 let sizeItem = null;      // 크기를 바꾸려고 고른 가구
@@ -221,10 +222,12 @@ function renderDecorPanel() {
   decorMoveButton.disabled = !canDecorate();
   decorTurnButton.disabled = !canDecorate();
   decorSizeButton.disabled = !canDecorate();
-  decorDyeButton.disabled = decorPlacing < 0;
+  decorDyeButton.disabled = decorPlacing < 0 && !canDecorate();
+  decorDyeButton.setAttribute('aria-pressed', String(decorPainting));
   syncSizeRow();
   decorDyes.textContent = `염료 ${myDye}개`;
-  decorHint.textContent = decorSizing ? (sizeItem ? `${DECOR_NAMES[sizeItem.info.k] || sizeItem.info.k}: 막대나 −, +로 크기를 바꿉니다. 이 가구는 ${sizeItem.info.smin}~${sizeItem.info.smax}%까지 돼요.` : '크기를 바꿀 가구를 누르세요. 가구마다 바꿀 수 있는 범위가 달라요.')
+  decorHint.textContent = decorPainting ? '염색할 가구를 누르세요. 놓인 그 자리에서 색이 바뀌고 염료 한 병이 듭니다. 내 가구, 집 가구, 동거인의 가구를 염색할 수 있어요.'
+    : decorSizing ? (sizeItem ? `${DECOR_NAMES[sizeItem.info.k] || sizeItem.info.k}: 막대나 −, +로 크기를 바꿉니다. 이 가구는 ${sizeItem.info.smin}~${sizeItem.info.smax}%까지 돼요.` : '크기를 바꿀 가구를 누르세요. 가구마다 바꿀 수 있는 범위가 달라요.')
     : decorTurning ? '돌릴 가구를 누르세요. 침대·깔개·텃밭은 누를 때마다 90도씩 돌고, 그 밖의 가구는 좌우로 뒤집혀요.'
     : decorMoving ? (moveItem ? '놓을 곳을 누르세요. Esc로 내려놓기를 취소합니다.' : '옮길 가구를 누르세요. 내 가구, 집 가구, 동거인의 가구를 옮길 수 있어요.')
     : decorTaking ? '내 가구, 집 가구, 동거인의 가구를 누르면 치웁니다. 동거인의 가구는 주인에게 돌아가요.'
@@ -243,6 +246,7 @@ function setDecorPlacing(kind, dyedIndex = -1) {
   decorPlacing = kind;
   decorDyedIndex = kind >= 0 ? dyedIndex : -1;
   if (kind >= 0) {
+    stopPainting();
     setDecorTaking(false);
     if (decorMoving) setDecorMoving(false);
     if (decorTurning) setDecorTurning(false);
@@ -255,6 +259,7 @@ function setDecorTaking(on) {
   decorTaking = on;
   decorTakeButton.setAttribute('aria-pressed', String(on));
   if (on) {
+    stopPainting();
     decorPlacing = -1;
     decorDyedIndex = -1;
     setDecorMoving(false);
@@ -270,6 +275,7 @@ function setDecorMoving(on) {
   moveItem = null;
   decorMoveButton.setAttribute('aria-pressed', String(on));
   if (on) {
+    stopPainting();
     stopSizing();
     decorTurning = false;
     decorTurnButton.setAttribute('aria-pressed', 'false');
@@ -287,6 +293,7 @@ function setDecorTurning(on) {
   decorTurning = on;
   decorTurnButton.setAttribute('aria-pressed', String(on));
   if (on) {
+    stopPainting();
     stopSizing();
     decorPlacing = -1;
     decorDyedIndex = -1;
@@ -306,6 +313,7 @@ function setDecorSizing(on) {
   sizeItem = null;
   decorSizeButton.setAttribute('aria-pressed', String(on));
   if (on) {
+    stopPainting();
     decorPlacing = -1;
     decorDyedIndex = -1;
     decorTaking = false;
@@ -362,9 +370,9 @@ document.getElementById('decor-size-down').addEventListener('click', () => sizeI
 document.getElementById('decor-size-up').addEventListener('click', () => sizeItem && sendSize((sizeItem.preview ?? sizeItem.scale) + 5));
 
 // 놓인 가구의 배율. 크기 막대를 끄는 중이면 미리 보는 크기.
-// 90도씩 돌려 놓을 수 있는 가구: 깔개와 텃밭, 침대 (서버 home/decor.hpp 의 rotatable 과 같다)
+// 90도씩 돌려 놓을 수 있는 가구: 깔개와 텃밭, 침대, 벽 (서버 home/decor.hpp 의 rotatable 과 같다)
 function canRotate(item) {
-  return item.place === DECOR_FLAT || item.k === 'bed' || item.k === 'linen_bed';
+  return item.place === DECOR_FLAT || item.k === 'bed' || item.k === 'linen_bed' || WALL_PIECES.has(item.k);
 }
 
 // 돌린 가구의 치수: 가로와 세로가 바뀐다 (서버 home/decor.hpp 의 turned 와 같다)
@@ -393,6 +401,11 @@ function scalePivotY(k, y) {
 // 돌려 놓은 가구는 그림 범위도 좌우로 뒤집히고, 크기를 바꾼 가구는 범위도 같이 커진다.
 // mw, mh 는 원래 크기의 그림 칸(누른 곳 판정용)이다.
 function itemBounds(d) {
+  if (WALL_PIECES.has(d.info.k)) {   // 벽은 돌려도 그림을 돌리지 않고 세로 벽으로 다시 그린다
+    const half = (d.base || d.info).hw, vertical = d.rot % 2;   // d.info 는 돌린 치수다
+    const w = vertical ? WALL_PIECE_THICK : half * 2, len = vertical ? half * 2 : WALL_PIECE_THICK;
+    return { dx: -w / 2, dy: -(WALL_HEIGHT + len), w, h: WALL_HEIGHT + len, s: 1, mask: null, mw: 0, mh: 0 };
+  }
   const b = spriteBounds(d.info.k);
   const s = decorScale(d), lift = HANGING[d.info.k] || 0;
   if (d.rot) {   // 돌린 가구: 그림 범위를 가운데를 중심으로 돌린다. 누른 곳은 범위로만 본다
@@ -408,8 +421,25 @@ function itemBounds(d) {
   return { dx, dy, w, h, s, mask: b.mask, mw: b.w, mh: b.h };
 }
 decorTakeButton.addEventListener('click', () => setDecorTaking(!decorTaking));
+// 놓인 가구 염색: 다른 모드를 모두 끄고, 누른 가구의 염색 창을 연다
+function setDecorPainting(on) {
+  if (on) {
+    setDecorTaking(false);
+    setDecorMoving(false);
+    setDecorTurning(false);
+    stopSizing();
+  }
+  decorPainting = on;
+  renderDecorPanel();
+}
+function stopPainting() {
+  decorPainting = false;
+}
 decorDyeButton.addEventListener('click', () => {
-  if (decorPlacing < 0) return;
+  if (decorPlacing < 0) {
+    setDecorPainting(!decorPainting);
+    return;
+  }
   const kind = decorPlacing, dyed = decorDyedIndex;
   setDecorPlacing(-1);  // 염색하는 동안 방을 눌러도 놓이지 않게
   openDye(kind, dyed);
@@ -508,11 +538,13 @@ function clearDecor() {
   setDecorMoving(false);
   setDecorTurning(false);
   stopSizing();
+  stopPainting();
 }
 
 // 벽걸이는 벽 높이로 맞춰 주고, 매달린 조명은 갓이 누른 곳에 오도록 기준점(바닥)을 아래로 내린다.
 function decorPoint(item, x, y) {
   if (HANGING[item.k]) return { x, y: y + HANGING[item.k] };
+  if (WALL_PIECES.has(item.k)) return { x: Math.round(x / WALL_PIECE_SNAP) * WALL_PIECE_SNAP, y: Math.round(y / WALL_PIECE_SNAP) * WALL_PIECE_SNAP };
   if (item.place !== DECOR_WALL) return { x, y };
   const room = terrain.zones[zone];
   const floor = (room.floors || []).filter((f) => x >= f[0] && x <= f[2]).sort((a, b) => Math.abs(a[1] - y) - Math.abs(b[1] - y))[0];
@@ -546,7 +578,7 @@ function decorAtPoint(x, y) {
 }
 
 function handleDecorClick(screenX, screenY) {
-  if (!decorMode() || !dyeEl.hidden || (decorPlacing < 0 && !decorTaking && !decorMoving && !decorTurning && !decorSizing)) return false;
+  if (!decorMode() || !dyeEl.hidden || (decorPlacing < 0 && !decorTaking && !decorMoving && !decorTurning && !decorSizing && !decorPainting)) return false;
   const [camX, camY] = camera(innerWidth, innerHeight);
   const x = screenX + camX, y = screenY + camY;
   if (decorSizing) {
@@ -557,6 +589,11 @@ function handleDecorClick(screenX, screenY) {
       Sound.play('page');
     }
     renderDecorPanel();
+    return true;
+  }
+  if (decorPainting) {
+    const item = decorAtPoint(x, y);
+    if (item) openPlacedDye(item);
     return true;
   }
   if (decorTurning) {
@@ -594,7 +631,7 @@ function handleDecorClick(screenX, screenY) {
 
 function drawDecorOverlay(now, night) {
   if (!decorMode()) return;
-  if (decorTaking || decorMoving || decorTurning || decorSizing) {   // 치우거나 옮기거나 돌릴 수 있는 가구에 테두리. 동거인의 가구는 하늘색, 크기를 고르는 가구는 분홍
+  if (decorTaking || decorMoving || decorTurning || decorSizing || decorPainting) {   // 치우거나 옮기거나 돌릴 수 있는 가구에 테두리. 동거인의 가구는 하늘색, 크기를 고르는 가구는 분홍
     ctx.lineWidth = 2;
     for (const d of decorItems) {
       if (!d.mine || d === moveItem) continue;
@@ -662,6 +699,10 @@ function spriteBounds(kind) {
 
 // 방과 장면이 가구를 그릴 때 거치는 곳. 염색한 가구는 물들인 그림과 오른쪽 아래 물방울 표시로 그린다.
 function drawFurniturePiece(f, now, night) {
+  if (WALL_PIECES.has(f.k)) {   // 벽: 돌린 모양과 염색을 그림 함수가 직접 그린다
+    FURNITURE[f.k](f, now, night);
+    return;
+  }
   const s = decorScale(f.decor);
   if (f.decor?.rot) {   // 90도씩 돌려 놓은 깔개, 텃밭, 침대: 가운데를 중심으로 돌려 그린다
     const { cy, ay } = turnedPivot(f.decor, f.y);
@@ -699,3 +740,153 @@ function drawFurnitureImage(f, now, night) {
   if (sprite.canvas.width) ctx.drawImage(sprite.canvas, f.x + sprite.dx, f.y + sprite.dy);
   FURNITURE_FX[f.k]?.(f, now, night);   // 음표, 불꽃, 물고기, 시계 바늘, TV 화면은 물들이지 않고 매 프레임 움직인다
 }
+
+// ------------------------------------------------------------ 벽 가구: 방 안에 세우는 벽 한 토막
+// 집을 넓힐 때 벽이 저절로 생기지 않으므로, 칸을 나누고 싶은 곳에 직접 세운다. 돌리면 세로 벽이 된다.
+// 높이는 방의 벽(WALL_HEIGHT)과 같고, 이어 놓기 쉽게 20px 칸에 맞춰 놓인다. 염색은 그림을 물들이지 않고 색 자체를 바꾼다.
+const WALL_PIECES = new Set(['room_wall', 'room_wall_long']);
+const WALL_PIECE_SNAP = 20, WALL_PIECE_THICK = 20;
+const WALL_PIECE_COLORS = ['#f1ede6', '#d9d2c5', '#a39b8d', '#8a8375'];   // 벽면, 줄눈, 윗면, 아랫단
+const wallPieceColors = new Map();   // 염색 값 → 물들인 색들
+Object.assign(DECOR_NAMES, { room_wall: '벽 (짧은 것)', room_wall_long: '벽 (긴 것)' });
+
+function wallPiecePalette(tint) {
+  if (!tint) return WALL_PIECE_COLORS;
+  let colors = wallPieceColors.get(tint);
+  if (!colors) {
+    const data = new Uint8ClampedArray(WALL_PIECE_COLORS.length * 4);
+    WALL_PIECE_COLORS.forEach((hex, i) => {
+      data.set([parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16), 255], i * 4);
+    });
+    applyTint(data, tint);
+    colors = WALL_PIECE_COLORS.map((_, i) => `rgb(${data[i * 4]}, ${data[i * 4 + 1]}, ${data[i * 4 + 2]})`);
+    wallPieceColors.set(tint, colors);
+  }
+  return colors;
+}
+
+// 벽 한 토막. 기준점은 바닥에 닿는 앞쪽 가운데다. 가로 벽은 앞면이 넓게, 세로 벽은 윗면이 길게 보인다
+function drawWallPiece(f, half) {
+  const { x, y } = f, rot = f.decor?.rot || 0;
+  const [face, mortar, top, foot] = wallPiecePalette(f.decor?.tint);
+  const w = rot % 2 ? WALL_PIECE_THICK : half * 2, len = rot % 2 ? half * 2 : WALL_PIECE_THICK;
+  const x0 = x - w / 2, faceTop = y - WALL_HEIGHT;
+  box(x0, faceTop - len, w, len, top);                 // 윗면
+  box(x0, faceTop, w, WALL_HEIGHT, face);             // 앞면
+  strokeLines(mortar, 1.5, () => {                    // 벽돌 줄눈
+    for (let row = 0, py = faceTop + 14; py < y - 8; py += 14, row++) {
+      ctx.moveTo(x0, py);
+      ctx.lineTo(x0 + w, py);
+      for (let px = x0 + (row % 2 ? 10 : 30); px < x0 + w; px += 40) {
+        ctx.moveTo(px, py);
+        ctx.lineTo(px, py + 14);
+      }
+    }
+  });
+  box(x0, y - 8, w, 8, foot);                          // 걸레받이
+}
+FURNITURE.room_wall = (f) => drawWallPiece(f, 40);
+FURNITURE.room_wall_long = (f) => drawWallPiece(f, 100);
+
+// ------------------------------------------------------------ 고양이 가구: 캣타워, 캣휠, 숨숨집
+Object.assign(DECOR_NAMES, { cat_tower: '캣타워', cat_wheel: '캣휠', cat_hideout: '숨숨집' });
+
+// 삼끈을 감은 기둥: 가로 줄무늬
+function sisalPost(x, top, bottom, half) {
+  box(x - half, top, half * 2, bottom - top, '#d8b27a');
+  strokeLines('#b58c55', 1.2, () => {
+    for (let y = top + 3; y < bottom; y += 4) {
+      ctx.moveTo(x - half, y);
+      ctx.lineTo(x + half, y);
+    }
+  });
+}
+
+Object.assign(FURNITURE, {
+  cat_tower({ x, y }) {
+    groundShadow(x, y + 2, 36, 7);
+    box(x - 34, y - 14, 68, 14, '#e9e2d6', 4);       // 바닥판
+    box(x - 34, y - 6, 68, 6, '#cfc6b6', 3);
+    sisalPost(x - 16, y - 70, y - 12, 6);
+    sisalPost(x + 18, y - 118, y - 12, 6);
+    box(x - 38, y - 78, 46, 10, '#e9e2d6', 4);       // 가운데 판
+    box(x - 38, y - 71, 46, 3, '#cfc6b6');
+    box(x - 4, y - 126, 46, 10, '#e9e2d6', 4);       // 맨 위 판과 둥근 방석
+    oval(x + 19, y - 130, 20, 7, '#c9b8e6');
+    oval(x + 19, y - 131, 14, 4.5, '#ddd0f2');
+    strokeLines('#8a7a64', 1.2, () => {               // 매달린 털공
+      ctx.moveTo(x - 30, y - 70);
+      ctx.lineTo(x - 30, y - 44);
+    });
+    fillCircles('#ff8fb3', [[x - 30, y - 40, 5]]);
+    fillCircles('#ffd1e0', [[x - 31.5, y - 41.5, 1.8]]);
+  },
+
+  cat_wheel(f) {
+    const { x, y } = f, cx = x, cy = y - 52, r = 46;
+    groundShadow(x, y + 2, 40, 7);
+    box(x - 40, y - 8, 80, 8, '#a5794c', 3);         // 받침
+    strokeLines('#8a6038', 5, () => {                 // 받침에서 바퀴 축으로
+      ctx.moveTo(x - 30, y - 6);
+      ctx.lineTo(cx, cy);
+      ctx.lineTo(x + 30, y - 6);
+    });
+    ctx.lineWidth = 10;
+    ctx.strokeStyle = '#c99a63';                      // 나무 테
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, TAU);
+    ctx.stroke();
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#8f9399';                      // 안쪽 카펫 길
+    ctx.beginPath();
+    ctx.arc(cx, cy, r - 7, 0, TAU);
+    ctx.stroke();
+    if (!f.noFx) drawWheelSpokes(f);
+  },
+
+  cat_hideout({ x, y }) {
+    groundShadow(x, y + 2, 28, 6);
+    ctx.fillStyle = '#e7a9b8';                        // 고양이 귀 모양 지붕
+    ctx.beginPath();
+    for (const side of [-1, 1]) {
+      ctx.moveTo(x + side * 20, y - 34);
+      ctx.lineTo(x + side * 17, y - 52);
+      ctx.lineTo(x + side * 6, y - 42);
+      ctx.closePath();
+    }
+    ctx.fill();
+    ctx.fillStyle = '#efbcc8';                        // 펠트 돔
+    ctx.beginPath();
+    ctx.moveTo(x - 27, y);
+    ctx.bezierCurveTo(x - 30, y - 40, x + 30, y - 40, x + 27, y);
+    ctx.closePath();
+    ctx.fill();
+    strokeLines('#d48ea0', 1.4, () => {               // 박음질
+      ctx.moveTo(x - 22, y - 4);
+      ctx.bezierCurveTo(x - 24, y - 33, x + 24, y - 33, x + 22, y - 4);
+    });
+    ctx.fillStyle = '#4a3036';                        // 둥근 입구
+    ctx.beginPath();
+    ctx.ellipse(x, y - 9, 10, 9, 0, Math.PI, 0);
+    ctx.lineTo(x + 10, y - 1);
+    ctx.lineTo(x - 10, y - 1);
+    ctx.closePath();
+    ctx.fill();
+    box(x - 29, y - 3, 58, 4, '#d995a7', 2);          // 방석 테두리
+  },
+});
+
+// 캣휠의 바퀴살과 축. 고양이가 타고 있으면 돈다. 염색한 캣휠은 몸체만 물들이고 바퀴살은 따로 그린다
+function drawWheelSpokes(f) {
+  const cx = f.x, cy = f.y - 52, r = 46;
+  const turn = f.decor && catPerchBusy.has(f.decor.id) ? performance.now() / 260 : 0;
+  strokeLines('#b0855a', 2, () => {
+    for (let i = 0; i < 6; i++) {
+      const a = turn + (i / 6) * TAU;
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(a) * (r - 10), cy + Math.sin(a) * (r - 10));
+    }
+  });
+  fillCircles('#6e4a2a', [[cx, cy, 5]]);
+}
+FURNITURE_FX.cat_wheel = drawWheelSpokes;

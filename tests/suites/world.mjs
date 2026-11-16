@@ -13,7 +13,8 @@ export default async function run(t) {
   t.check('every building fits inside the village', map.buildings.every((b) => b.x - b.halfW >= 0 && b.x + b.halfW <= a.welcome.w && b.y - b.back - 80 >= 0 && b.door[1] + 40 <= a.welcome.h), JSON.stringify(map.buildings.map((b) => [b.k, b.x, b.y])));
   const boxes = map.buildings.filter((b) => !b.in).map((b) => [b.x - b.halfW, b.y - b.back - 100, b.x + b.halfW, b.y + b.front]);
   t.check('buildings do not overlap', boxes.every((p, i) => boxes.every((q, j) => i === j || p[2] <= q[0] || q[2] <= p[0] || p[3] <= q[1] || q[3] <= p[1])));
-  t.check('houses sit south of the river and the rest north', map.buildings.every((b) => (b.k === 'house') === (b.y > Math.max(...map.bot))));
+  // 처음 세 집은 강 남쪽, 나중에 지은 헤연의 집은 강 북쪽 농장 문 옆에 있다
+  t.check('houses sit south of the river and the rest north', map.buildings.every((b) => (b.k === 'house' && b.name !== '헤연') === (b.y > Math.max(...map.bot))));
   t.check('the places are theater, casino, jazz bar, cafe and the farm gate', JSON.stringify(map.buildings.filter((b) => b.k !== 'house' && !b.in).map((b) => b.k).sort()) === '["cafe","casino","farm","jazz","theater"]');
   t.check('river tables', map.top.length === 37 && map.bot.length === 37);
   t.check('river wide everywhere', Math.min(...map.top.map((v, i) => map.bot[i] - v)) >= 170);
